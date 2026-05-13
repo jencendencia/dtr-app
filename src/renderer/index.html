@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Biometric DTR App</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="dtrForm.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Login Overlay -->
+  <div class="login-overlay" id="login-overlay">
+    <div class="login-card">
+      <div class="login-icon" id="login-icon-default">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+          <circle cx="12" cy="10" r="3"/>
+          <path d="M6.168 18.849A4 4 0 0 1 10 16h4a4 4 0 0 1 3.834 2.855"/>
+        </svg>
+      </div>
+      <img id="login-logo" src="" alt="" style="display:none;width:64px;height:64px;object-fit:contain;border-radius:10px;margin:0 auto 12px auto;">
+      <h2 id="login-title">DTR System</h2>
+      <p class="login-subtitle">Sign in to continue</p>
+      <form id="login-form">
+        <div class="login-field">
+          <label for="login-username">Username</label>
+          <input type="text" id="login-username" placeholder="Enter username" autocomplete="off" required>
+        </div>
+        <div class="login-field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="Enter password" required>
+        </div>
+        <p class="login-error" id="login-error"></p>
+        <button type="submit" class="login-btn" id="login-btn">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- App Container (hidden until login) -->
+  <div class="app-container" id="app-container" style="display: none;">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img id="sidebar-logo" src="" alt="" style="display:none;width:30px;height:30px;object-fit:contain;border-radius:6px;flex-shrink:0;">
+        <h2 id="sidebar-title">DTR System</h2>
+      </div>
+      <nav>
+        <button class="nav-btn active" id="nav-dashboard">Dashboard</button>
+        <button class="nav-btn" id="nav-dtr">Print DTR</button>
+        <button class="nav-btn" id="nav-search-teacher">Search Teacher</button>
+        <button class="nav-btn" id="nav-admin">Time Config</button>
+        <button class="nav-btn" id="nav-settings">Settings</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info" id="user-info">
+          <span class="user-avatar" id="user-avatar">A</span>
+          <span class="user-name" id="user-name">Admin</span>
+        </div>
+        <button class="logout-btn" id="btn-logout">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Logout
+        </button>
+      </div>
+    </aside>
+    <main class="content" id="main-content">
+      <!-- Content injected by JS -->
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

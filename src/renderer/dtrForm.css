@@ -1,0 +1,195 @@
+/* Print Specific Styles */
+@media print {
+  @page {
+    margin: 5mm; 
+    size: A4 portrait;
+  }
+
+  /* Reset all HTML elements that cause clipping */
+  body, html, .app-container, .content, #main-content, .view-section, #dtr-preview-container {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    background: white !important;
+    box-shadow: none !important;
+  }
+
+  /* Target exact elements to hide using specific IDs and classes */
+  .sidebar, 
+  .dashboard-header, 
+  .nav-btn,
+  .login-overlay,
+  .sidebar-footer,
+  #teacher-select,
+  #month-select,
+  #btn-generate-dtr,
+  #btn-generate-all,
+  #btn-print-dtr {
+    display: none !important;
+  }
+
+  .card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure exactly 1 page per form without clipping */
+  .dtr-printable-area {
+    width: 195mm !important;
+    height: 275mm !important; /* Perfect A4 fit */
+    box-sizing: border-box !important;
+    margin: 0 auto !important;
+    padding: 5mm 10mm !important;
+    page-break-after: always;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    background: transparent !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+}
+
+/* Screen Preview styles */
+@media screen {
+  .dtr-printable-area {
+    width: 210mm;
+    height: 297mm; /* Full A4 aspect in preview */
+    margin: 0 auto 30px auto;
+    padding: 10mm 15mm;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* General Layout inside printable area */
+.dtr-printable-area {
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+  box-sizing: border-box;
+}
+
+.dtr-header { margin-bottom: 2px; }
+.cs-form-label { font-style: italic; font-size: 11px; }
+
+.dtr-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  margin: 4px 0 0 0;
+}
+
+.dtr-title-underline {
+  width: 120px;
+  height: 2px;
+  background-color: #000;
+  margin: 2px auto 8px auto;
+}
+
+.dtr-name-section {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.dtr-name-line {
+  border-bottom: 1px solid #000;
+  width: 100%;
+  display: inline-block;
+  font-size: 16px;
+  font-weight: bold;
+  padding-bottom: 2px;
+}
+
+.dtr-name-label {
+  font-size: 13px;
+  font-weight: bold;
+  font-style: italic;
+  display: block;
+  margin-top: 2px;
+}
+
+.info-grid {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-style: italic;
+  margin-bottom: 6px;
+}
+
+.info-grid .field { display: flex; gap: 5px; }
+
+.dtr-table {
+  width: 100%;
+  flex-grow: 1; /* Automatically uniformly stretches all rows slightly to fill the rest of the A4 page perfectly! */
+  border-collapse: collapse;
+  font-size: 13px;
+  border: 2px solid #000;
+}
+
+.dtr-table th, .dtr-table td {
+  border: 1px solid #000;
+  text-align: center;
+  padding: 0;
+}
+
+.dtr-table th {
+  font-weight: bold;
+  vertical-align: middle;
+  padding: 1px;
+}
+
+.dtr-table .thick-col {
+  border-left: 2px solid #000;
+  border-right: 2px solid #000;
+}
+
+.dtr-table .thick-bottom { border-bottom: 2px solid #000; }
+.dtr-table .thick-top { border-top: 2px solid #000; }
+
+.certify-text {
+  font-style: italic;
+  font-size: 12px;
+  text-align: justify;
+  margin-top: 10px;
+  margin-bottom: 15px;
+  line-height: 1.2;
+}
+
+.signature-line {
+  border-bottom: 1px solid #000;
+  margin-left: auto;
+  width: 250px;
+  margin-bottom: 15px;
+}
+
+.double-signature-line {
+  border-bottom: 2px double #000;
+  margin-left: auto;
+  width: 250px;
+  margin-bottom: 8px; 
+}
+
+.in-charge-line {
+  border-top: 1px solid #000;
+  margin-left: auto;
+  width: 250px;
+  text-align: center;
+  font-weight: bold;
+  font-style: italic;
+  font-size: 13px;
+  padding-top: 2px;
+}
+
+.instructions-text {
+  text-align: center;
+  font-size: 11px;
+  margin-top: auto; 
+}

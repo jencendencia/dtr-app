@@ -1,0 +1,16 @@
+{
+  "name": "biometric-dtr-app",
+  "version": "1.0.0",
+  "description": "Desktop app for DTR connected to biometric device",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^29.1.5"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "mysql2": "^3.9.7"
+  }
+}
