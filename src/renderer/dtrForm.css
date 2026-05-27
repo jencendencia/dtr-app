@@ -28,7 +28,8 @@
   #month-select,
   #btn-generate-dtr,
   #btn-generate-all,
-  #btn-print-dtr {
+  #btn-print-dtr,
+  #column-layout-select {
     display: none !important;
   }
 
@@ -53,6 +54,75 @@
     display: flex !important;
     flex-direction: column !important;
   }
+
+  /* Two-column print layout */
+  .dtr-page-two-col {
+    display: flex !important;
+    flex-direction: row !important;
+    width: 195mm !important;
+    height: 275mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    page-break-after: always;
+    page-break-inside: avoid;
+    gap: 2mm;
+  }
+
+  .dtr-page-two-col .dtr-col {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .dtr-page-two-col .dtr-printable-area {
+    width: 100% !important;
+    height: 275mm !important;
+    padding: 3mm 4mm !important;
+    margin: 0 !important;
+    page-break-after: auto !important;
+  }
+
+  .dtr-page-two-col .dtr-title {
+    font-size: 14px;
+  }
+
+  .dtr-page-two-col .dtr-name-line {
+    font-size: 12px !important;
+  }
+
+  .dtr-page-two-col .cs-form-label {
+    font-size: 9px;
+  }
+
+  .dtr-page-two-col .info-grid {
+    font-size: 10px;
+    margin-bottom: 3px;
+  }
+
+  .dtr-page-two-col .dtr-table {
+    font-size: 9px;
+  }
+
+  .dtr-page-two-col .certify-text {
+    font-size: 8px;
+    margin-top: 4px;
+    margin-bottom: 6px;
+  }
+
+  .dtr-page-two-col .signature-line,
+  .dtr-page-two-col .double-signature-line {
+    width: 100%;
+    margin-bottom: 6px;
+  }
+
+  .dtr-page-two-col .in-charge-line {
+    width: 100%;
+    font-size: 9px;
+  }
+
+  .dtr-page-two-col .instructions-text {
+    font-size: 8px;
+  }
 }
 
 /* Screen Preview styles */
@@ -66,6 +136,79 @@
     background: #fff;
     display: flex;
     flex-direction: column;
+  }
+
+  /* Two-column screen preview */
+  .dtr-page-two-col {
+    display: flex;
+    flex-direction: row;
+    width: 210mm;
+    height: 297mm;
+    margin: 0 auto 30px auto;
+    gap: 4px;
+    background: #fff;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    padding: 5mm;
+    box-sizing: border-box;
+  }
+
+  .dtr-page-two-col .dtr-col {
+    flex: 1;
+    min-width: 0;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dtr-page-two-col .dtr-printable-area {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 3mm 4mm;
+    box-shadow: none;
+    border: 1px solid #e5e7eb;
+  }
+
+  .dtr-page-two-col .dtr-title {
+    font-size: 14px;
+  }
+
+  .dtr-page-two-col .dtr-name-line {
+    font-size: 12px !important;
+  }
+
+  .dtr-page-two-col .cs-form-label {
+    font-size: 9px;
+  }
+
+  .dtr-page-two-col .info-grid {
+    font-size: 10px;
+    margin-bottom: 3px;
+  }
+
+  .dtr-page-two-col .dtr-table {
+    font-size: 9px;
+  }
+
+  .dtr-page-two-col .certify-text {
+    font-size: 9px;
+    margin-top: 4px;
+    margin-bottom: 6px;
+  }
+
+  .dtr-page-two-col .signature-line,
+  .dtr-page-two-col .double-signature-line {
+    width: 100%;
+    margin-bottom: 6px;
+  }
+
+  .dtr-page-two-col .in-charge-line {
+    width: 100%;
+    font-size: 10px;
+  }
+
+  .dtr-page-two-col .instructions-text {
+    font-size: 9px;
   }
 }
 

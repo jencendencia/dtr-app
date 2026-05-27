@@ -5,7 +5,7 @@ async function seed() {
   const rootPool = mysql.createPool({
     host: 'localhost',
     user: 'root',
-    password: ''
+    password: 'joel'
   });
 
   try {

@@ -159,24 +159,74 @@ function getDashboardView() {
     <div class="view-section active" id="dashboard-view">
       <div class="dashboard-header"><h1>Dashboard</h1><p>Welcome to the Biometric DTR System</p></div>
       <div class="card" style="margin-bottom:20px;">
-        <h3>Connect Biometric Device</h3>
-        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Select the brand/type of device you are using to connect.</p>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <select id="device-type" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
-            <option value="zkteco">ZKTeco (Network)</option>
-            <option value="secugen">SecuGen (USB)</option>
-            <option value="digitalpersona">DigitalPersona (USB)</option>
-          </select>
-          <input type="text" id="device-ip" placeholder="IP Address (if network)" value="192.168.1.201" style="padding:8px;border-radius:6px;border:1px solid var(--border);width:180px;">
-          <button id="btn-connect" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Connect</button>
+        <h3>📡 Import Attendance Data</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Choose your data source and follow the steps to import attendance records.</p>
+        <div id="import-source-tabs" style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+          <button class="import-source-tab active" data-source="cloud" id="tab-cloud" style="flex:1;padding:10px 16px;border:none;cursor:pointer;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;">
+            <span style="font-size:18px;">☁️</span> NGTeco Office (Cloud)
+          </button>
+          <button class="import-source-tab" data-source="usb" id="tab-usb" style="flex:1;padding:10px 16px;border:none;cursor:pointer;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;background:#f3f4f6;color:#6b7280;">
+            <span style="font-size:18px;">🔌</span> USB Device
+          </button>
         </div>
-        <p style="margin-top:15px;">Status: <span id="conn-status" style="color:red;font-weight:bold;">Disconnected</span></p>
+        <div id="source-cloud-panel">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;border-radius:8px;">
+            <span style="font-size:22px;">☁️</span>
+            <div style="flex:1;">
+              <p style="font-weight:600;font-size:13px;margin:0;">Step 1: Export from NGTeco Office</p>
+              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Log in → Attendance → Select date range → Export as CSV/Excel</p>
+            </div>
+            <button id="btn-open-portal" style="padding:8px 16px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Open NGTeco Portal ↗</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;padding:10px;background:linear-gradient(135deg,#f0fdf4,#eff6ff);border:1px solid #bbf7d0;border-radius:8px;">
+            <span style="font-size:22px;">📥</span>
+            <div style="flex:1;">
+              <p style="font-weight:600;font-size:13px;margin:0;">Step 2: Import into DTR System</p>
+              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Select the exported CSV or Excel file to import attendance records</p>
+            </div>
+            <button id="btn-import-cloud" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
+          </div>
+        </div>
+        <div id="source-usb-panel" style="display:none;">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,#fef3c7,#fef9c3);border:1px solid #fcd34d;border-radius:8px;">
+            <span style="font-size:22px;">🔌</span>
+            <div style="flex:1;">
+              <p style="font-weight:600;font-size:13px;margin:0;">Step 1: Export from Device via USB</p>
+              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Insert USB → Menu → Data Mgmt → USB Export → Download Attendance Report</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,#f0fdf4,#fef9c3);border:1px solid #bbf7d0;border-radius:8px;">
+            <span style="font-size:22px;">💾</span>
+            <div style="flex:1;">
+              <p style="font-weight:600;font-size:13px;margin:0;">Step 2: Plug USB into Computer</p>
+              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Open the USB drive and locate the attendance CSV file (e.g. AttendanceLog.csv or .dat file)</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;padding:10px;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;border-radius:8px;">
+            <span style="font-size:22px;">📥</span>
+            <div style="flex:1;">
+              <p style="font-weight:600;font-size:13px;margin:0;">Step 3: Import into DTR System</p>
+              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Select the CSV or DAT file from the USB drive to import attendance records</p>
+            </div>
+            <button id="btn-import-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
+          </div>
+        </div>
       </div>
-      <div class="card">
-        <h3>Data Synchronization</h3>
-        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Pull new attendance records and store them in the database.</p>
-        <button id="btn-sync" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;" disabled>Sync Logs to Database</button>
-        <p id="sync-status" style="margin-top:10px;color:var(--text-muted);font-size:14px;"></p>
+      <div id="import-preview-card" class="card" style="display:none;margin-bottom:20px;">
+        <h3>📋 File Preview</h3>
+        <p id="import-file-name" style="color:var(--text-muted);font-size:13px;margin-bottom:4px;"></p>
+        <p id="import-source-label" style="color:#6366f1;font-size:12px;font-weight:600;margin-bottom:8px;"></p>
+        <div id="import-preview-table" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;"></div>
+        <div id="import-mapping-info" style="font-size:12px;color:#374151;margin-bottom:12px;padding:8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px;"></div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button id="btn-confirm-import" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✓ Import to Database</button>
+          <button id="btn-cancel-import" style="padding:8px 16px;background:#9ca3af;color:white;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
+        </div>
+      </div>
+      <div id="import-result-card" class="card" style="display:none;">
+        <h3 id="import-result-title">Import Result</h3>
+        <p id="import-result-message" style="font-size:14px;"></p>
+        <div id="import-result-details" style="font-size:12px;margin-top:8px;"></div>
       </div>
     </div>`;
 }
@@ -185,11 +235,15 @@ function getDtrView() {
   return `
     <div class="view-section active" id="dtr-view">
       <div class="dashboard-header"><h1>Print DTR</h1><p>Generate and print Civil Service Form No. 48</p></div>
-      <div class="card" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;">
+      <div class="card" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <select id="teacher-select" style="padding:8px;border-radius:6px;border:1px solid var(--border);min-width:150px;"><option value="">Select Teacher</option></select>
         <input type="month" id="month-select" value="2026-06" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
         <button id="btn-generate-dtr" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Generate DTR</button>
         <button id="btn-generate-all" style="padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:6px;cursor:pointer;">Print All</button>
+        <select id="column-layout-select" style="padding:8px;border-radius:6px;border:1px solid var(--border);font-size:13px;">
+          <option value="1">1 Column</option>
+          <option value="2">2 Columns</option>
+        </select>
         <button id="btn-print-dtr" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;margin-left:auto;">Print Document</button>
       </div>
       <div id="dtr-preview-container" style="background:#e5e7eb;padding:20px;border-radius:12px;overflow-y:auto;max-height:500px;display:flex;justify-content:center;">
@@ -329,27 +383,185 @@ function getSettingsView() {
 // ─── VIEW SETUP FUNCTIONS ───────────────────────────────────
 
 function setupDashboardView() {
-  const btnConnect = document.getElementById('btn-connect');
-  const connStatus = document.getElementById('conn-status');
-  const btnSync = document.getElementById('btn-sync');
-  const syncStatus = document.getElementById('sync-status');
-  if (!btnConnect) return;
+  const btnOpenPortal = document.getElementById('btn-open-portal');
+  const previewCard = document.getElementById('import-preview-card');
+  const previewTable = document.getElementById('import-preview-table');
+  const mappingInfo = document.getElementById('import-mapping-info');
+  const fileNameEl = document.getElementById('import-file-name');
+  const sourceLabel = document.getElementById('import-source-label');
+  const btnConfirm = document.getElementById('btn-confirm-import');
+  const btnCancel = document.getElementById('btn-cancel-import');
+  const resultCard = document.getElementById('import-result-card');
+  const resultTitle = document.getElementById('import-result-title');
+  const resultMessage = document.getElementById('import-result-message');
+  const resultDetails = document.getElementById('import-result-details');
+  const cloudPanel = document.getElementById('source-cloud-panel');
+  const usbPanel = document.getElementById('source-usb-panel');
+  const tabCloud = document.getElementById('tab-cloud');
+  const tabUsb = document.getElementById('tab-usb');
 
-  btnConnect.addEventListener('click', async () => {
-    btnConnect.disabled = true; btnConnect.innerText = 'Connecting...';
-    connStatus.innerText = 'Attempting connection...'; connStatus.style.color = '#f59e0b';
-    const res = await ipcRenderer.invoke('connect-biometric', document.getElementById('device-type').value, document.getElementById('device-ip').value);
-    btnConnect.innerText = 'Connect'; btnConnect.disabled = false;
-    if (res.success) { connStatus.innerText = 'Connected'; connStatus.style.color = '#10b981'; btnSync.disabled = false; }
-    else { connStatus.innerText = 'Connection Failed: ' + res.message; connStatus.style.color = 'red'; btnSync.disabled = true; }
+  if (!tabCloud) return;
+
+  let selectedFilePath = null;
+  let activeSource = 'cloud'; // 'cloud' or 'usb'
+
+  // ── Source Tab Switching ──
+  function setActiveSource(source) {
+    activeSource = source;
+    if (source === 'cloud') {
+      cloudPanel.style.display = '';
+      usbPanel.style.display = 'none';
+      tabCloud.style.background = 'linear-gradient(135deg,#3b82f6,#2563eb)';
+      tabCloud.style.color = 'white';
+      tabUsb.style.background = '#f3f4f6';
+      tabUsb.style.color = '#6b7280';
+    } else {
+      cloudPanel.style.display = 'none';
+      usbPanel.style.display = '';
+      tabUsb.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+      tabUsb.style.color = 'white';
+      tabCloud.style.background = '#f3f4f6';
+      tabCloud.style.color = '#6b7280';
+    }
+    // Reset preview when switching
+    previewCard.style.display = 'none';
+    resultCard.style.display = 'none';
+    selectedFilePath = null;
+  }
+
+  tabCloud.addEventListener('click', () => setActiveSource('cloud'));
+  tabUsb.addEventListener('click', () => setActiveSource('usb'));
+
+  // Step 1: Open NGTeco portal (cloud only)
+  btnOpenPortal.addEventListener('click', async () => {
+    await ipcRenderer.invoke('open-ngteco-portal');
   });
 
-  btnSync.addEventListener('click', async () => {
-    btnSync.disabled = true; syncStatus.innerText = 'Fetching and parsing logs...';
-    const res = await ipcRenderer.invoke('sync-logs');
-    if (res.success) { syncStatus.innerText = res.message; syncStatus.style.color = '#10b981'; }
-    else { syncStatus.innerText = 'Error: ' + res.message; syncStatus.style.color = 'red'; }
-    btnSync.disabled = false;
+  // ── Shared Import Handler ──
+  async function handleImportClick() {
+    const dialogTitle = activeSource === 'cloud'
+      ? 'Select NGTeco Office Export File'
+      : 'Select USB Device Attendance File';
+    const fileResult = await ipcRenderer.invoke('select-import-file', dialogTitle);
+    if (!fileResult.success) return;
+
+    selectedFilePath = fileResult.filePath;
+    fileNameEl.textContent = `File: ${selectedFilePath.split(/[/\\]/).pop()}`;
+    sourceLabel.textContent = activeSource === 'cloud' ? '☁️ Source: NGTeco Office (Cloud)' : '🔌 Source: USB Device';
+
+    // Preview the file
+    const preview = await ipcRenderer.invoke('preview-import-file', selectedFilePath);
+    if (!preview.success) {
+      alert('Error reading file: ' + preview.message);
+      return;
+    }
+
+    // Show preview table
+    if (preview.preview && preview.preview.length > 0) {
+      let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+      html += '<tr style="background:#f3f4f6;position:sticky;top:0;">';
+      preview.headers.forEach(h => {
+        html += `<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb;white-space:nowrap;">${h}</th>`;
+      });
+      html += '</tr>';
+      preview.preview.forEach(row => {
+        html += '<tr>';
+        preview.headers.forEach(h => {
+          html += `<td style="padding:3px 6px;border:1px solid #e5e7eb;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${row[h] || ''}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</table>';
+      previewTable.innerHTML = html;
+    }
+
+    // Show column mapping detection
+    if (preview.isTimecardFormat) {
+      // Timecard Report format — show employee and pay period info
+      let mapHtml = '<strong>📋 Timecard Report Format Detected</strong><br>';
+      if (preview.employeeCount > 1) {
+        mapHtml += `Employees: <strong>${preview.employeeCount}</strong> (${preview.employeeName || '—'}) | `;
+      } else {
+        mapHtml += `Employee: <strong>${preview.employeeName || '—'}</strong> | `;
+      }
+      mapHtml += `Pay Period: <strong>${preview.payPeriod || '—'}</strong><br>`;
+      mapHtml += `<span style="color:#6b7280;">Total attendance records: ${preview.totalRows}</span>`;
+      mapHtml += `<br><span style="color:#3b82f6;font-size:11px;">ℹ️ Teachers not in the database will be auto-created on import.</span>`;
+      mappingInfo.innerHTML = mapHtml;
+      mappingInfo.style.background = '#eff6ff';
+      mappingInfo.style.borderColor = '#93c5fd';
+    } else if (preview.mapping) {
+      const m = preview.mapping;
+      let mapHtml = '<strong>🔍 Auto-detected columns:</strong><br>';
+      mapHtml += `Employee ID → <strong>${m.employeeId || '⚠️ not found'}</strong> | `;
+      mapHtml += `Name → <strong>${m.name || '—'}</strong> | `;
+      mapHtml += `Date → <strong>${m.date || '—'}</strong> | `;
+      if (m.timeIn || m.timeOut) {
+        mapHtml += `Time In → <strong>${m.timeIn || '—'}</strong> | `;
+        mapHtml += `Time Out → <strong>${m.timeOut || '—'}</strong>`;
+      } else if (m.timestamp) {
+        mapHtml += `Timestamp → <strong>${m.timestamp}</strong>`;
+      }
+      mapHtml += `<br><span style="color:#6b7280;">Total rows: ${preview.totalRows}</span>`;
+      mappingInfo.innerHTML = mapHtml;
+      mappingInfo.style.background = '#fefce8';
+      mappingInfo.style.borderColor = '#fde68a';
+    }
+
+    previewCard.style.display = '';
+    resultCard.style.display = 'none';
+  }
+
+  // Attach to both import buttons
+  document.getElementById('btn-import-cloud').addEventListener('click', handleImportClick);
+  document.getElementById('btn-import-usb').addEventListener('click', handleImportClick);
+
+  // Confirm import
+  btnConfirm.addEventListener('click', async () => {
+    if (!selectedFilePath) return;
+
+    btnConfirm.disabled = true;
+    btnConfirm.textContent = 'Importing...';
+
+    const res = await ipcRenderer.invoke('import-attendance-file', selectedFilePath);
+
+    btnConfirm.disabled = false;
+    btnConfirm.textContent = '✓ Import to Database';
+
+    // Show result
+    resultCard.style.display = '';
+    if (res.success) {
+      resultTitle.textContent = '✅ Import Complete';
+      resultTitle.style.color = '#10b981';
+      resultMessage.textContent = res.message;
+      resultMessage.style.color = '#374151';
+      let detailsHtml = '';
+      if (res.synced > 0) detailsHtml += `<span style="color:#10b981;">● ${res.synced} new record(s) added</span><br>`;
+      if (res.filtered > 0) detailsHtml += `<span style="color:#6366f1;">● ${res.filtered} repeated scan(s) filtered</span><br>`;
+      if (res.skipped > 0) detailsHtml += `<span style="color:#f59e0b;">● ${res.skipped} duplicate(s) skipped</span><br>`;
+      if (res.autoCreated > 0) {
+        detailsHtml += `<span style="color:#3b82f6;">● Auto-created ${res.autoCreated} new teacher(s): ${(res.autoCreatedNames || []).join(', ')}</span><br>`;
+      }
+      if (res.unmatched > 0) {
+        detailsHtml += `<span style="color:#ef4444;">● ${res.unmatched} unmatched ID(s): ${(res.unmatchedIds || []).join(', ')}</span><br>`;
+        detailsHtml += `<span style="color:#6b7280;font-size:11px;">Tip: Make sure the Employee ID in the export matches the Biometric ID (or name matches) in the Teachers table.</span>`;
+      }
+      resultDetails.innerHTML = detailsHtml;
+    } else {
+      resultTitle.textContent = '❌ Import Failed';
+      resultTitle.style.color = '#ef4444';
+      resultMessage.textContent = res.message;
+      resultMessage.style.color = '#ef4444';
+      resultDetails.innerHTML = '';
+    }
+
+    previewCard.style.display = 'none';
+  });
+
+  // Cancel import
+  btnCancel.addEventListener('click', () => {
+    previewCard.style.display = 'none';
+    selectedFilePath = null;
   });
 }
 
@@ -366,6 +578,8 @@ async function setupDtrView() {
   select.innerHTML = '<option value="">Select Teacher</option>';
   teachers.forEach(t => { select.innerHTML += `<option value="${t.id}">${t.name}</option>`; });
 
+  const columnSelect = document.getElementById('column-layout-select');
+
   document.getElementById('btn-generate-dtr').addEventListener('click', async () => {
     const teacherId = select.value; const monthVal = monthSelect.value;
     if (!teacherId || !monthVal) return alert('Select teacher and month');
@@ -373,7 +587,13 @@ async function setupDtrView() {
     // Fetch fresh time schedule before generating DTR
     const freshSchedule = await ipcRenderer.invoke('get-time-schedule');
     const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
-    container.innerHTML = generateDTRHtml(select.options[select.selectedIndex].text, monthNames[parseInt(month)], year, logs, freshSchedule);
+    const dtrHtml = generateDTRHtml(select.options[select.selectedIndex].text, monthNames[parseInt(month)], year, logs, freshSchedule);
+    const cols = columnSelect.value;
+    if (cols === '2') {
+      container.innerHTML = `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
+    } else {
+      container.innerHTML = dtrHtml;
+    }
   });
 
   document.getElementById('btn-generate-all').addEventListener('click', async () => {
@@ -382,10 +602,16 @@ async function setupDtrView() {
     const [year, month] = monthVal.split('-');
     // Fetch fresh time schedule before generating DTR
     const freshSchedule = await ipcRenderer.invoke('get-time-schedule');
+    const cols = columnSelect.value;
     let allHtml = '';
     for (const t of teachers) {
       const logs = await ipcRenderer.invoke('get-attendance', t.id, parseInt(month), parseInt(year));
-      allHtml += generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, freshSchedule);
+      const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, freshSchedule);
+      if (cols === '2') {
+        allHtml += `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
+      } else {
+        allHtml += dtrHtml;
+      }
     }
     container.innerHTML = `<div style="display:flex;flex-direction:column;gap:40px;width:100%;">${allHtml}</div>`;
   });

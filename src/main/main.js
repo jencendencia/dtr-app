@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db/connection');
@@ -296,36 +296,305 @@ ipcMain.handle('delete-user', async (event, userId) => {
   }
 });
 
-// ─── Biometric Device ───────────────────────────────────────
+// ─── NGTeco Cloud Biometric Import ──────────────────────────
 
-ipcMain.handle('connect-biometric', async (event, type, ip) => {
+ipcMain.handle('open-ngteco-portal', async () => {
+  shell.openExternal('https://office.ngteco.com');
+  return { success: true };
+});
+
+ipcMain.handle('select-import-file', async (event, customTitle) => {
+  const result = await dialog.showOpenDialog({
+    title: customTitle || 'Select Attendance Export File',
+    filters: [
+      { name: 'Attendance Files', extensions: ['csv', 'xlsx', 'xls', 'dat'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, message: 'No file selected.' };
+  }
+
+  return { success: true, filePath: result.filePaths[0] };
+});
+
+ipcMain.handle('preview-import-file', async (event, filePath) => {
   try {
-    const result = await biometricService.connect(type, ip);
-    return result;
+    return biometricService.previewFile(filePath);
   } catch (error) {
     return { success: false, message: error.message };
   }
 });
 
-ipcMain.handle('sync-logs', async () => {
+ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) => {
   try {
-    const logs = await biometricService.fetchLogs();
-    
-    if (logs.length > 0) {
-      const insertValues = logs.map(l => {
-        const teacher_id = l.biometric_id === 101 ? 1 : (l.biometric_id === 102 ? 2 : 0);
-        return [teacher_id, new Date(l.log_time), l.log_type];
+    // Parse the file
+    const result = biometricService.parseAttendanceFile(filePath);
+    if (!result.success) {
+      return result;
+    }
+
+    const records = result.data || [];
+    if (records.length === 0) {
+      return { success: true, message: 'No attendance records found in file.', synced: 0 };
+    }
+
+    // ── Deduplicate repeated scans ──────────────────────────────
+    // USB devices record every raw scan. If a user scans 2-3 times within
+    // a short window, we keep only the first scan per window (10 minutes).
+    const DEDUP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
+    // Group records by employee ID (or name if no ID — Timecard format)
+    const byEmployee = {};
+    for (const r of records) {
+      const key = r.employeeId || r.name || '';
+      if (!byEmployee[key]) byEmployee[key] = [];
+      byEmployee[key].push(r);
+    }
+
+    // For each employee, sort by time and collapse scans within the window
+    const dedupedRecords = [];
+    let filteredCount = 0;
+    for (const empId of Object.keys(byEmployee)) {
+      const empRecords = byEmployee[empId];
+      // Sort chronologically
+      empRecords.sort((a, b) => {
+        if (a.logTime < b.logTime) return -1;
+        if (a.logTime > b.logTime) return 1;
+        return 0;
       });
-      const valid = insertValues.filter(v => v[0] !== 0);
-      if (valid.length > 0) {
-        await pool.query('INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES ?', [valid]);
+
+      let lastKeptTime = null;
+      for (const rec of empRecords) {
+        const recTime = new Date(rec.logTime.replace(' ', 'T')).getTime();
+        if (lastKeptTime !== null && !isNaN(recTime) && !isNaN(lastKeptTime) && (recTime - lastKeptTime) < DEDUP_WINDOW_MS) {
+          // This scan is within the window of the previous kept scan — skip it
+          filteredCount++;
+          continue;
+        }
+        dedupedRecords.push(rec);
+        lastKeptTime = isNaN(recTime) ? null : recTime;
       }
     }
-    return { success: true, message: `Synced ${logs.length} logs successfully!` };
+
+    console.log(`[Import] Dedup: ${records.length} raw → ${dedupedRecords.length} unique (${filteredCount} repeated scans filtered)`);
+
+    // Build a mapping of biometric_id → teacher_id from the database
+    const [teachers] = await pool.query('SELECT id, name, biometric_id FROM Teachers');
+    const biometricMap = {};
+    const nameMap = {};       // exact normalized name → teacher_id
+    const nameList = [];      // list of {name, id} for fuzzy matching
+    teachers.forEach(t => {
+      biometricMap[String(t.biometric_id)] = t.id;
+      const normalized = normalizeName(t.name);
+      nameMap[normalized] = t.id;
+      nameList.push({ name: t.name, normalized, id: t.id });
+    });
+
+    // Also try to get the time schedule for check-in/check-out classification
+    let timeSchedule;
+    try {
+      const [schedRows] = await pool.query('SELECT * FROM TimeSchedule WHERE id = 1');
+      timeSchedule = schedRows.length > 0 ? schedRows[0] : null;
+    } catch (_) {}
+
+    const amOutStart = timeSchedule ? timeToMinutesHelper(timeSchedule.am_time_out_start) : 720;
+    const pmInEnd = timeSchedule ? timeToMinutesHelper(timeSchedule.pm_time_in_end) : 780;
+
+    let insertedCount = 0;
+    let skippedCount = 0;
+    let autoCreatedTeachers = new Set();
+
+    // Cache for auto-created teachers (name → teacher_id) to avoid repeated DB lookups
+    const autoCreatedMap = {};
+
+    // Get the next available biometric_id for auto-creating teachers
+    const [maxBioRow] = await pool.query('SELECT COALESCE(MAX(biometric_id), 0) as maxId FROM Teachers');
+    let nextBiometricId = (maxBioRow[0]?.maxId || 0) + 1;
+
+    for (const record of dedupedRecords) {
+      // Try to match by employee ID first, then by name (with fuzzy matching)
+      let teacherId = biometricMap[record.employeeId];
+      if (!teacherId && record.name) {
+        teacherId = fuzzyMatchTeacher(record.name, nameMap, nameList);
+      }
+
+      // If still no match and we have a name, auto-create the teacher
+      if (!teacherId && record.name) {
+        const normalizedRecName = normalizeName(record.name);
+        
+        // Check if we already auto-created this teacher in this import session
+        if (autoCreatedMap[normalizedRecName]) {
+          teacherId = autoCreatedMap[normalizedRecName];
+        } else {
+          // Auto-create the teacher in the database
+          const cleanName = record.name.replace(/\s+/g, ' ').trim();
+          const bioId = nextBiometricId++;
+          try {
+            const [insertResult] = await pool.query(
+              'INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)',
+              [cleanName, bioId]
+            );
+            teacherId = insertResult.insertId;
+            autoCreatedMap[normalizedRecName] = teacherId;
+            autoCreatedTeachers.add(cleanName);
+
+            // Also update our lookup maps for subsequent records
+            biometricMap[String(bioId)] = teacherId;
+            nameMap[normalizedRecName] = teacherId;
+            nameList.push({ name: cleanName, normalized: normalizedRecName, id: teacherId });
+
+            console.log(`[Import] Auto-created teacher: "${cleanName}" (ID: ${teacherId}, Biometric: ${bioId})`);
+          } catch (createErr) {
+            console.error(`[Import] Failed to auto-create teacher "${cleanName}":`, createErr.message);
+            continue;
+          }
+        }
+      }
+
+      if (!teacherId) {
+        skippedCount++;
+        continue;
+      }
+
+      const logTime = record.logTime;
+      if (!logTime) {
+        skippedCount++;
+        continue;
+      }
+
+      // Smart log type: if the file already set it, use it. Otherwise classify by time of day.
+      let logType = record.logType;
+      if (logType !== 'Check-in' && logType !== 'Check-out') {
+        // Classify: parse HH:MM from logTime
+        const timeMatch = logTime.match(/(\d{2}):(\d{2})/);
+        if (timeMatch) {
+          const mins = parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]);
+          // Before noon-ish = check-in AM, around noon = check-out AM, 
+          // early afternoon = check-in PM, late afternoon = check-out PM
+          if (mins < amOutStart) logType = 'Check-in';
+          else if (mins < pmInEnd) logType = 'Check-out';
+          else logType = 'Check-in'; // PM check-in
+        } else {
+          logType = 'Check-in';
+        }
+      }
+
+      // Check for duplicate
+      const [existing] = await pool.query(
+        'SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?',
+        [teacherId, logTime]
+      );
+
+      if (existing.length > 0) {
+        skippedCount++;
+        continue;
+      }
+
+      await pool.query(
+        'INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)',
+        [teacherId, logTime, logType]
+      );
+      insertedCount++;
+    }
+
+    const autoCreatedList = [...autoCreatedTeachers];
+    let summary = `Imported ${insertedCount} new record(s). Skipped ${skippedCount} duplicate(s).`;
+    if (filteredCount > 0) {
+      summary += ` Filtered ${filteredCount} repeated scan(s).`;
+    }
+    if (autoCreatedList.length > 0) {
+      summary += ` Auto-created ${autoCreatedList.length} new teacher(s): ${autoCreatedList.join(', ')}.`;
+    }
+    console.log('[Import]', summary);
+    return { success: true, message: summary, synced: insertedCount, skipped: skippedCount, filtered: filteredCount, autoCreated: autoCreatedList.length, autoCreatedNames: autoCreatedList };
   } catch (err) {
+    console.error('[Import] Error:', err);
     return { success: false, message: err.message };
   }
 });
+
+function timeToMinutesHelper(timeVal) {
+  if (!timeVal) return 0;
+  const s = typeof timeVal === 'string' ? timeVal : timeVal.toString();
+  const parts = s.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
+}
+
+/**
+ * Normalize a name for matching: lowercase, collapse whitespace, trim.
+ */
+function normalizeName(name) {
+  if (!name) return '';
+  return name.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Try to match a record name to a teacher using fuzzy matching.
+ * 
+ * Matching strategies (in order):
+ * 1. Exact normalized match
+ * 2. Match after removing middle initials (e.g., "R." or "R")
+ * 3. Substring match (CSV name contains teacher name or vice versa)
+ * 4. Match by first + last name only
+ */
+function fuzzyMatchTeacher(recordName, nameMap, nameList) {
+  if (!recordName) return null;
+  
+  const normalized = normalizeName(recordName);
+  
+  // Strategy 1: Exact normalized match
+  if (nameMap[normalized]) {
+    return nameMap[normalized];
+  }
+  
+  // Strategy 2: Remove middle initials (single letters followed by optional period)
+  // "ivy jane r. galo" → "ivy jane galo"
+  const noMiddle = normalized.replace(/\s+[a-z]\.?\s+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (noMiddle !== normalized && nameMap[noMiddle]) {
+    return nameMap[noMiddle];
+  }
+  
+  // Also try removing middle initials from DB teacher names
+  for (const t of nameList) {
+    const tNoMiddle = t.normalized.replace(/\s+[a-z]\.?\s+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (noMiddle === tNoMiddle || normalized === tNoMiddle) {
+      return t.id;
+    }
+  }
+  
+  // Strategy 3: Substring match (one name contains the other)
+  for (const t of nameList) {
+    if (normalized.includes(t.normalized) || t.normalized.includes(normalized)) {
+      return t.id;
+    }
+    // Also try with middle initials removed
+    if (noMiddle.includes(t.normalized) || t.normalized.includes(noMiddle)) {
+      return t.id;
+    }
+  }
+  
+  // Strategy 4: Match by first name + last name only
+  const recordParts = normalized.split(' ');
+  if (recordParts.length >= 2) {
+    const firstName = recordParts[0];
+    const lastName = recordParts[recordParts.length - 1];
+    for (const t of nameList) {
+      const tParts = t.normalized.split(' ');
+      if (tParts.length >= 2) {
+        const tFirst = tParts[0];
+        const tLast = tParts[tParts.length - 1];
+        if (firstName === tFirst && lastName === tLast) {
+          return t.id;
+        }
+      }
+    }
+  }
+  
+  return null;
+}
 
 // ─── Print DTR ──────────────────────────────────────────────
 
