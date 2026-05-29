@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { db } = require('../db/connection');
@@ -8,14 +8,20 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 900,
+    minHeight: 600,
+    icon: path.join(__dirname, '../../build/icon.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     }
   });
 
+  // Hide the default menu bar in production
+  Menu.setApplicationMenu(null);
+
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  mainWindow.webContents.openDevTools();
+  mainWindow.maximize();
 }
 
 // ─── Authentication ──────────────────────────────────────────
@@ -618,4 +624,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  try {
+    db.close();
+  } catch (_) {}
 });

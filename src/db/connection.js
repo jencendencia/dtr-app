@@ -74,6 +74,27 @@ db.exec(`
 
 console.log('SQLite database ready:', dbPath);
 
+// ─── First-run: auto-create default admin if no users exist ──
+
+const userCount = db.prepare('SELECT COUNT(*) as count FROM Users').get();
+if (userCount.count === 0) {
+  const bcrypt = require('bcryptjs');
+  const hashedPassword = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO Users (username, password, role) VALUES (?, ?, ?)').run('admin', hashedPassword, 'admin');
+  console.log('First run — created default admin user (username: admin, password: admin123)');
+}
+
+// ─── First-run: insert default time schedule if none exists ──
+
+const schedCount = db.prepare('SELECT COUNT(*) as count FROM TimeSchedule').get();
+if (schedCount.count === 0) {
+  db.prepare(`
+    INSERT INTO TimeSchedule (id, am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out)
+    VALUES (1, '07:00:00', '08:00:00', '12:00:00', '12:20:00', '12:35:00', '13:00:00', '17:00:00', '18:00:00')
+  `).run();
+  console.log('First run — created default time schedule');
+}
+
 function testConnection() {
   try {
     db.prepare('SELECT 1').get();
