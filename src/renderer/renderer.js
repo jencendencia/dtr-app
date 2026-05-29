@@ -574,9 +574,27 @@ async function setupDtrView() {
   // Load schedule
   timeSchedule = await ipcRenderer.invoke('get-time-schedule');
 
-  const teachers = await ipcRenderer.invoke('get-teachers');
-  select.innerHTML = '<option value="">Select Teacher</option>';
-  teachers.forEach(t => { select.innerHTML += `<option value="${t.id}">${t.name}</option>`; });
+  // Function to refresh the teacher dropdown — called on setup AND every time the DTR tab is shown
+  async function refreshTeacherSelect() {
+    const currentVal = select.value; // preserve current selection if possible
+    const teachers = await ipcRenderer.invoke('get-teachers');
+    select.innerHTML = '<option value="">Select Teacher</option>';
+    teachers.forEach(t => { select.innerHTML += `<option value="${t.id}">${t.name}</option>`; });
+    // Restore selection if the teacher still exists
+    if (currentVal && select.querySelector(`option[value="${currentVal}"]`)) {
+      select.value = currentVal;
+    }
+    return teachers;
+  }
+
+  // Initial load
+  await refreshTeacherSelect();
+
+  // Refresh teacher list every time the DTR tab becomes visible
+  const dtrNavBtn = document.getElementById('nav-dtr');
+  if (dtrNavBtn) {
+    dtrNavBtn.addEventListener('click', () => { refreshTeacherSelect(); });
+  }
 
   const columnSelect = document.getElementById('column-layout-select');
 
@@ -600,11 +618,12 @@ async function setupDtrView() {
     const monthVal = monthSelect.value;
     if (!monthVal) return alert('Select a month');
     const [year, month] = monthVal.split('-');
-    // Fetch fresh time schedule before generating DTR
+    // Fetch fresh teacher list and time schedule before generating all DTRs
+    const freshTeachers = await ipcRenderer.invoke('get-teachers');
     const freshSchedule = await ipcRenderer.invoke('get-time-schedule');
     const cols = columnSelect.value;
     let allHtml = '';
-    for (const t of teachers) {
+    for (const t of freshTeachers) {
       const logs = await ipcRenderer.invoke('get-attendance', t.id, parseInt(month), parseInt(year));
       const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, freshSchedule);
       if (cols === '2') {

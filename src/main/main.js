@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { pool } = require('../db/connection');
+const { db } = require('../db/connection');
 const biometricService = require('./biometricsService');
 
 function createWindow() {
@@ -23,12 +23,11 @@ function createWindow() {
 ipcMain.handle('login', async (event, username, password) => {
   try {
     console.log('Login attempt for user:', username);
-    const [rows] = await pool.query('SELECT * FROM Users WHERE username = ?', [username]);
-    if (rows.length === 0) {
+    const user = db.prepare('SELECT * FROM Users WHERE username = ?').get(username);
+    if (!user) {
       console.log('User not found:', username);
       return { success: false, message: 'Invalid username or password.' };
     }
-    const user = rows[0];
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       console.log('Password mismatch for user:', username);
@@ -46,7 +45,7 @@ ipcMain.handle('login', async (event, username, password) => {
 
 ipcMain.handle('get-teachers', async () => {
   try {
-    const [rows] = await pool.query('SELECT * FROM Teachers ORDER BY name ASC');
+    const rows = db.prepare('SELECT * FROM Teachers ORDER BY name ASC').all();
     return rows;
   } catch (err) {
     console.error('Error fetching teachers:', err);
@@ -58,14 +57,14 @@ ipcMain.handle('get-teachers', async () => {
 
 ipcMain.handle('get-attendance', async (event, teacherId, month, year) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT id, DATE_FORMAT(log_time, '%Y-%m-%d %H:%i:%s') as log_time, log_type 
+    const rows = db.prepare(`
+      SELECT id, strftime('%Y-%m-%d %H:%M:%S', log_time) as log_time, log_type 
       FROM AttendanceLogs 
       WHERE teacher_id = ? 
-        AND MONTH(log_time) = ? 
-        AND YEAR(log_time) = ?
+        AND CAST(strftime('%m', log_time) AS INTEGER) = ? 
+        AND CAST(strftime('%Y', log_time) AS INTEGER) = ?
       ORDER BY log_time ASC
-    `, [teacherId, month, year]);
+    `).all(teacherId, month, year);
     return rows;
   } catch (err) {
     console.error('Error fetching attendance:', err);
@@ -75,11 +74,11 @@ ipcMain.handle('get-attendance', async (event, teacherId, month, year) => {
 
 ipcMain.handle('search-teachers', async (event, query) => {
   try {
-    const [rows] = await pool.query(`
+    const rows = db.prepare(`
       SELECT * FROM Teachers 
       WHERE name LIKE ? OR biometric_id LIKE ?
       ORDER BY name ASC
-    `, [`%${query}%`, `%${query}%`]);
+    `).all(`%${query}%`, `%${query}%`);
     return rows;
   } catch (err) {
     console.error('Error searching teachers:', err);
@@ -89,12 +88,12 @@ ipcMain.handle('search-teachers', async (event, query) => {
 
 ipcMain.handle('get-teacher-logs', async (event, teacherId, days) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT id, DATE_FORMAT(log_time, '%Y-%m-%d %H:%i:%s') as log_time, log_type 
+    const rows = db.prepare(`
+      SELECT id, strftime('%Y-%m-%d %H:%M:%S', log_time) as log_time, log_type 
       FROM AttendanceLogs 
-      WHERE teacher_id = ? AND log_time >= DATE_SUB(NOW(), INTERVAL ? DAY)
+      WHERE teacher_id = ? AND log_time >= datetime('now', 'localtime', '-' || ? || ' days')
       ORDER BY log_time DESC
-    `, [teacherId, days]);
+    `).all(teacherId, days);
     return rows;
   } catch (err) {
     console.error('Error fetching teacher logs:', err);
@@ -109,14 +108,14 @@ ipcMain.handle('update-attendance-time', async (event, logId, newTime) => {
     // Parse time string (HH:MM) and create new datetime
     const [hours, minutes] = newTime.split(':');
     
-    // Get current log to get the date - use DATE_FORMAT to ensure string format
-    const [logRows] = await pool.query('SELECT DATE_FORMAT(log_time, \'%Y-%m-%d %H:%i:%s\') as log_time FROM AttendanceLogs WHERE id = ?', [logId]);
-    if (logRows.length === 0) {
+    // Get current log to get the date
+    const logRow = db.prepare("SELECT strftime('%Y-%m-%d %H:%M:%S', log_time) as log_time FROM AttendanceLogs WHERE id = ?").get(logId);
+    if (!logRow) {
       console.log('Log not found:', logId);
       return { success: false, message: 'Log not found' };
     }
     
-    const currentLogTime = logRows[0].log_time;
+    const currentLogTime = logRow.log_time;
     console.log('Current log_time from DB:', currentLogTime);
     
     // Extract date portion (YYYY-MM-DD) from the formatted string
@@ -126,12 +125,12 @@ ipcMain.handle('update-attendance-time', async (event, logId, newTime) => {
     const newDateTime = dateStr + ' ' + hours.padStart(2, '0') + ':' + minutes.padStart(2, '0') + ':00';
     console.log('New datetime string:', newDateTime);
     
-    const result = await pool.query('UPDATE AttendanceLogs SET log_time = ? WHERE id = ?', [newDateTime, logId]);
-    console.log('Update result - affected rows:', result[0].affectedRows);
+    const result = db.prepare('UPDATE AttendanceLogs SET log_time = ? WHERE id = ?').run(newDateTime, logId);
+    console.log('Update result - affected rows:', result.changes);
     
     // Verify the update actually happened
-    const [updatedRows] = await pool.query('SELECT log_time FROM AttendanceLogs WHERE id = ?', [logId]);
-    console.log('Verified new log_time:', updatedRows[0].log_time);
+    const updatedRow = db.prepare('SELECT log_time FROM AttendanceLogs WHERE id = ?').get(logId);
+    console.log('Verified new log_time:', updatedRow.log_time);
     
     return { success: true, message: 'Time updated successfully' };
   } catch (err) {
@@ -164,13 +163,12 @@ ipcMain.handle('create-attendance-log', async (event, teacherId, day, newTime, l
     const newDateTime = dateStr + ' ' + hours.padStart(2, '0') + ':' + minutes.padStart(2, '0') + ':00';
     console.log('Creating log with datetime:', newDateTime);
     
-    const result = await pool.query(
-      'INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)',
-      [teacherId, newDateTime, logType]
-    );
+    const result = db.prepare(
+      'INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)'
+    ).run(teacherId, newDateTime, logType);
     
-    console.log('Create result - inserted row ID:', result[0].insertId);
-    return { success: true, message: 'Log created successfully', logId: result[0].insertId };
+    console.log('Create result - inserted row ID:', result.lastInsertRowid);
+    return { success: true, message: 'Log created successfully', logId: result.lastInsertRowid };
   } catch (err) {
     console.error('Error creating attendance log:', err);
     return { success: false, message: err.message };
@@ -179,7 +177,7 @@ ipcMain.handle('create-attendance-log', async (event, teacherId, day, newTime, l
 
 ipcMain.handle('delete-attendance-log', async (event, logId) => {
   try {
-    await pool.query('DELETE FROM AttendanceLogs WHERE id = ?', [logId]);
+    db.prepare('DELETE FROM AttendanceLogs WHERE id = ?').run(logId);
     return { success: true, message: 'Log deleted successfully' };
   } catch (err) {
     console.error('Error deleting attendance log:', err);
@@ -191,8 +189,8 @@ ipcMain.handle('delete-attendance-log', async (event, logId) => {
 
 ipcMain.handle('get-time-schedule', async () => {
   try {
-    const [rows] = await pool.query('SELECT * FROM TimeSchedule WHERE id = 1');
-    if (rows.length === 0) {
+    const row = db.prepare('SELECT * FROM TimeSchedule WHERE id = 1').get();
+    if (!row) {
       // Return defaults if no row exists
       return {
         am_time_in: '07:00', am_time_in_end: '08:00',
@@ -201,7 +199,6 @@ ipcMain.handle('get-time-schedule', async () => {
         pm_time_out_start: '17:00', pm_time_out: '18:00'
       };
     }
-    const row = rows[0];
     return {
       am_time_in: row.am_time_in.substring(0, 5),
       am_time_in_end: row.am_time_in_end.substring(0, 5),
@@ -221,19 +218,19 @@ ipcMain.handle('get-time-schedule', async () => {
 ipcMain.handle('save-time-schedule', async (event, schedule) => {
   try {
     const { am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out } = schedule;
-    await pool.query(`
+    db.prepare(`
       INSERT INTO TimeSchedule (id, am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out) 
       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE 
-        am_time_in = VALUES(am_time_in),
-        am_time_in_end = VALUES(am_time_in_end),
-        am_time_out_start = VALUES(am_time_out_start),
-        am_time_out = VALUES(am_time_out),
-        pm_time_in = VALUES(pm_time_in),
-        pm_time_in_end = VALUES(pm_time_in_end),
-        pm_time_out_start = VALUES(pm_time_out_start),
-        pm_time_out = VALUES(pm_time_out)
-    `, [am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out]);
+      ON CONFLICT(id) DO UPDATE SET 
+        am_time_in = excluded.am_time_in,
+        am_time_in_end = excluded.am_time_in_end,
+        am_time_out_start = excluded.am_time_out_start,
+        am_time_out = excluded.am_time_out,
+        pm_time_in = excluded.pm_time_in,
+        pm_time_in_end = excluded.pm_time_in_end,
+        pm_time_out_start = excluded.pm_time_out_start,
+        pm_time_out = excluded.pm_time_out
+    `).run(am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out);
     return { success: true };
   } catch (err) {
     console.error('Error saving time schedule:', err);
@@ -245,7 +242,7 @@ ipcMain.handle('save-time-schedule', async (event, schedule) => {
 
 ipcMain.handle('get-users', async () => {
   try {
-    const [rows] = await pool.query('SELECT id, username, role, created_at FROM Users ORDER BY created_at ASC');
+    const rows = db.prepare('SELECT id, username, role, created_at FROM Users ORDER BY created_at ASC').all();
     return rows;
   } catch (err) {
     console.error('Error fetching users:', err);
@@ -256,10 +253,10 @@ ipcMain.handle('get-users', async () => {
 ipcMain.handle('add-user', async (event, username, password, role) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
-    await pool.query('INSERT INTO Users (username, password, role) VALUES (?, ?, ?)', [username, hashed, role]);
+    db.prepare('INSERT INTO Users (username, password, role) VALUES (?, ?, ?)').run(username, hashed, role);
     return { success: true };
   } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       return { success: false, message: 'Username already exists.' };
     }
     console.error('Error adding user:', err);
@@ -269,16 +266,16 @@ ipcMain.handle('add-user', async (event, username, password, role) => {
 
 ipcMain.handle('change-password', async (event, userId, currentPassword, newPassword) => {
   try {
-    const [rows] = await pool.query('SELECT password FROM Users WHERE id = ?', [userId]);
-    if (rows.length === 0) {
+    const user = db.prepare('SELECT password FROM Users WHERE id = ?').get(userId);
+    if (!user) {
       return { success: false, message: 'User not found.' };
     }
-    const match = await bcrypt.compare(currentPassword, rows[0].password);
+    const match = await bcrypt.compare(currentPassword, user.password);
     if (!match) {
       return { success: false, message: 'Current password is incorrect.' };
     }
     const hashed = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE Users SET password = ? WHERE id = ?', [hashed, userId]);
+    db.prepare('UPDATE Users SET password = ? WHERE id = ?').run(hashed, userId);
     return { success: true };
   } catch (err) {
     console.error('Error changing password:', err);
@@ -288,7 +285,7 @@ ipcMain.handle('change-password', async (event, userId, currentPassword, newPass
 
 ipcMain.handle('delete-user', async (event, userId) => {
   try {
-    await pool.query('DELETE FROM Users WHERE id = ?', [userId]);
+    db.prepare('DELETE FROM Users WHERE id = ?').run(userId);
     return { success: true };
   } catch (err) {
     console.error('Error deleting user:', err);
@@ -382,7 +379,7 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
     console.log(`[Import] Dedup: ${records.length} raw → ${dedupedRecords.length} unique (${filteredCount} repeated scans filtered)`);
 
     // Build a mapping of biometric_id → teacher_id from the database
-    const [teachers] = await pool.query('SELECT id, name, biometric_id FROM Teachers');
+    const teachers = db.prepare('SELECT id, name, biometric_id FROM Teachers').all();
     const biometricMap = {};
     const nameMap = {};       // exact normalized name → teacher_id
     const nameList = [];      // list of {name, id} for fuzzy matching
@@ -396,8 +393,7 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
     // Also try to get the time schedule for check-in/check-out classification
     let timeSchedule;
     try {
-      const [schedRows] = await pool.query('SELECT * FROM TimeSchedule WHERE id = 1');
-      timeSchedule = schedRows.length > 0 ? schedRows[0] : null;
+      timeSchedule = db.prepare('SELECT * FROM TimeSchedule WHERE id = 1').get();
     } catch (_) {}
 
     const amOutStart = timeSchedule ? timeToMinutesHelper(timeSchedule.am_time_out_start) : 720;
@@ -411,94 +407,95 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
     const autoCreatedMap = {};
 
     // Get the next available biometric_id for auto-creating teachers
-    const [maxBioRow] = await pool.query('SELECT COALESCE(MAX(biometric_id), 0) as maxId FROM Teachers');
-    let nextBiometricId = (maxBioRow[0]?.maxId || 0) + 1;
+    const maxBioRow = db.prepare('SELECT COALESCE(MAX(biometric_id), 0) as maxId FROM Teachers').get();
+    let nextBiometricId = (maxBioRow?.maxId || 0) + 1;
 
-    for (const record of dedupedRecords) {
-      // Try to match by employee ID first, then by name (with fuzzy matching)
-      let teacherId = biometricMap[record.employeeId];
-      if (!teacherId && record.name) {
-        teacherId = fuzzyMatchTeacher(record.name, nameMap, nameList);
-      }
+    // Prepare statements outside the loop for performance
+    const insertTeacherStmt = db.prepare('INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)');
+    const checkExistingStmt = db.prepare('SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?');
+    const insertLogStmt = db.prepare('INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)');
 
-      // If still no match and we have a name, auto-create the teacher
-      if (!teacherId && record.name) {
-        const normalizedRecName = normalizeName(record.name);
-        
-        // Check if we already auto-created this teacher in this import session
-        if (autoCreatedMap[normalizedRecName]) {
-          teacherId = autoCreatedMap[normalizedRecName];
-        } else {
-          // Auto-create the teacher in the database
-          const cleanName = record.name.replace(/\s+/g, ' ').trim();
-          const bioId = nextBiometricId++;
-          try {
-            const [insertResult] = await pool.query(
-              'INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)',
-              [cleanName, bioId]
-            );
-            teacherId = insertResult.insertId;
-            autoCreatedMap[normalizedRecName] = teacherId;
-            autoCreatedTeachers.add(cleanName);
+    // Wrap all imports in a transaction for performance
+    const importTransaction = db.transaction(() => {
+      for (const record of dedupedRecords) {
+        // Try to match by employee ID first, then by name (with fuzzy matching)
+        let teacherId = biometricMap[record.employeeId];
+        if (!teacherId && record.name) {
+          teacherId = fuzzyMatchTeacher(record.name, nameMap, nameList);
+        }
 
-            // Also update our lookup maps for subsequent records
-            biometricMap[String(bioId)] = teacherId;
-            nameMap[normalizedRecName] = teacherId;
-            nameList.push({ name: cleanName, normalized: normalizedRecName, id: teacherId });
+        // If still no match and we have a name, auto-create the teacher
+        if (!teacherId && record.name) {
+          const normalizedRecName = normalizeName(record.name);
+          
+          // Check if we already auto-created this teacher in this import session
+          if (autoCreatedMap[normalizedRecName]) {
+            teacherId = autoCreatedMap[normalizedRecName];
+          } else {
+            // Auto-create the teacher in the database
+            const cleanName = record.name.replace(/\s+/g, ' ').trim();
+            const bioId = nextBiometricId++;
+            try {
+              const insertResult = insertTeacherStmt.run(cleanName, bioId);
+              teacherId = insertResult.lastInsertRowid;
+              autoCreatedMap[normalizedRecName] = teacherId;
+              autoCreatedTeachers.add(cleanName);
 
-            console.log(`[Import] Auto-created teacher: "${cleanName}" (ID: ${teacherId}, Biometric: ${bioId})`);
-          } catch (createErr) {
-            console.error(`[Import] Failed to auto-create teacher "${cleanName}":`, createErr.message);
-            continue;
+              // Also update our lookup maps for subsequent records
+              biometricMap[String(bioId)] = teacherId;
+              nameMap[normalizedRecName] = teacherId;
+              nameList.push({ name: cleanName, normalized: normalizedRecName, id: teacherId });
+
+              console.log(`[Import] Auto-created teacher: "${cleanName}" (ID: ${teacherId}, Biometric: ${bioId})`);
+            } catch (createErr) {
+              console.error(`[Import] Failed to auto-create teacher "${cleanName}":`, createErr.message);
+              continue;
+            }
           }
         }
-      }
 
-      if (!teacherId) {
-        skippedCount++;
-        continue;
-      }
-
-      const logTime = record.logTime;
-      if (!logTime) {
-        skippedCount++;
-        continue;
-      }
-
-      // Smart log type: if the file already set it, use it. Otherwise classify by time of day.
-      let logType = record.logType;
-      if (logType !== 'Check-in' && logType !== 'Check-out') {
-        // Classify: parse HH:MM from logTime
-        const timeMatch = logTime.match(/(\d{2}):(\d{2})/);
-        if (timeMatch) {
-          const mins = parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]);
-          // Before noon-ish = check-in AM, around noon = check-out AM, 
-          // early afternoon = check-in PM, late afternoon = check-out PM
-          if (mins < amOutStart) logType = 'Check-in';
-          else if (mins < pmInEnd) logType = 'Check-out';
-          else logType = 'Check-in'; // PM check-in
-        } else {
-          logType = 'Check-in';
+        if (!teacherId) {
+          skippedCount++;
+          continue;
         }
+
+        const logTime = record.logTime;
+        if (!logTime) {
+          skippedCount++;
+          continue;
+        }
+
+        // Smart log type: if the file already set it, use it. Otherwise classify by time of day.
+        let logType = record.logType;
+        if (logType !== 'Check-in' && logType !== 'Check-out') {
+          // Classify: parse HH:MM from logTime
+          const timeMatch = logTime.match(/(\d{2}):(\d{2})/);
+          if (timeMatch) {
+            const mins = parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]);
+            // Before noon-ish = check-in AM, around noon = check-out AM, 
+            // early afternoon = check-in PM, late afternoon = check-out PM
+            if (mins < amOutStart) logType = 'Check-in';
+            else if (mins < pmInEnd) logType = 'Check-out';
+            else logType = 'Check-in'; // PM check-in
+          } else {
+            logType = 'Check-in';
+          }
+        }
+
+        // Check for duplicate
+        const existing = checkExistingStmt.get(teacherId, logTime);
+
+        if (existing) {
+          skippedCount++;
+          continue;
+        }
+
+        insertLogStmt.run(teacherId, logTime, logType);
+        insertedCount++;
       }
+    });
 
-      // Check for duplicate
-      const [existing] = await pool.query(
-        'SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?',
-        [teacherId, logTime]
-      );
-
-      if (existing.length > 0) {
-        skippedCount++;
-        continue;
-      }
-
-      await pool.query(
-        'INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)',
-        [teacherId, logTime, logType]
-      );
-      insertedCount++;
-    }
+    importTransaction();
 
     const autoCreatedList = [...autoCreatedTeachers];
     let summary = `Imported ${insertedCount} new record(s). Skipped ${skippedCount} duplicate(s).`;

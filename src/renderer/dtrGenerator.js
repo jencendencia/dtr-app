@@ -146,10 +146,9 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
     }
 
     const weekendStyle = isWeekend ? 'background:#f9fafb;color:#9ca3af;font-style:italic;' : '';
-    const dayDisplay = `${i}`;
-    const amInDisplay = dayLabel ? dayLabel : amIn;
+    const dayDisplay = dayLabel ? `${i} - ${dayLabel}` : `${i}`;
 
-    rows += `<tr style="${weekendStyle}"><td>${dayDisplay}</td><td>${amInDisplay}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    rows += `<tr style="${weekendStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
   }
 
   const totalH = Math.floor(totalUndertimeMins / 60);

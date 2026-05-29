@@ -4,14 +4,15 @@
   "description": "Desktop app for DTR connected to biometric device",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "seed": "node src/db/seed.js"
   },
   "devDependencies": {
     "electron": "^29.1.5"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "mysql2": "^3.9.7",
+    "better-sqlite3": "^11.0.0",
     "xlsx": "^0.18.5"
   }
 }
