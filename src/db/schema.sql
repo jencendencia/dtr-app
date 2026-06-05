@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS Teachers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     biometric_id INT UNIQUE NOT NULL,
+    status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -49,6 +49,7 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
   const sPmOut = timeToMinutes(sched.pm_time_out);
 
   const principalName = localStorage.getItem('principalName') || '';
+  const principalPosition = localStorage.getItem('principalPosition') || '';
   const principalSignature = localStorage.getItem('principalSignature') || '';
 
   const logsByDay = {};
@@ -201,7 +202,7 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
       <div style="margin-top:30px;margin-left:auto;width:250px;text-align:center;position:relative;">
         ${principalSignature ? `<img src="${principalSignature}" style="max-height:60px;max-width:200px;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:1;">` : ''}
         <div style="font-weight:bold;font-size:14px;position:relative;z-index:2;padding-bottom:2px;">${principalName}</div>
-        <div class="in-charge-line" style="width:100%;">In-Charge</div>
+        <div class="in-charge-line" style="width:100%;">${principalPosition || 'In-Charge'}</div>
       </div>
       <div class="instructions-text">(See Instructions on back)</div>
     </div>`;

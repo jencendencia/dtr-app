@@ -8,9 +8,66 @@ let currentMonth = null;
 let currentYear = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+  applyTheme();
   applyBranding();
   setupLogin();
+  setupThemeToggles();
 });
+
+// ─── THEME MANAGEMENT ───────────────────────────────────────
+
+function applyTheme() {
+  const saved = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  updateThemeToggleUI(saved);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  updateThemeToggleUI(next);
+}
+
+function setupThemeToggles() {
+  const btnThemeToggle = document.getElementById('btn-theme-toggle');
+  const btnLoginThemeToggle = document.getElementById('btn-login-theme-toggle');
+
+  if (btnThemeToggle) {
+    btnThemeToggle.addEventListener('click', toggleTheme);
+  }
+  if (btnLoginThemeToggle) {
+    btnLoginThemeToggle.addEventListener('click', toggleTheme);
+  }
+}
+
+function updateThemeToggleUI(theme) {
+  // Sidebar elements
+  const moonIcon = document.getElementById('theme-icon-moon');
+  const sunIcon = document.getElementById('theme-icon-sun');
+  const label = document.getElementById('theme-toggle-label');
+
+  // Login elements
+  const loginMoonIcon = document.getElementById('login-theme-icon-moon');
+  const loginSunIcon = document.getElementById('login-theme-icon-sun');
+
+  if (theme === 'dark') {
+    if (moonIcon) moonIcon.style.display = 'none';
+    if (sunIcon) sunIcon.style.display = '';
+    if (label) label.textContent = 'Light Mode';
+
+    if (loginMoonIcon) loginMoonIcon.style.display = 'none';
+    if (loginSunIcon) loginSunIcon.style.display = '';
+  } else {
+    if (moonIcon) moonIcon.style.display = '';
+    if (sunIcon) sunIcon.style.display = 'none';
+    if (label) label.textContent = 'Dark Mode';
+
+    if (loginMoonIcon) loginMoonIcon.style.display = '';
+    if (loginSunIcon) loginSunIcon.style.display = 'none';
+  }
+}
 
 function applyBranding() {
   const schoolName = localStorage.getItem('schoolName') || '';
@@ -94,6 +151,7 @@ function initApp() {
   const navBtns = document.querySelectorAll('.nav-btn');
 
   // Logout
+
   document.getElementById('btn-logout').addEventListener('click', () => {
     currentUser = null;
     document.getElementById('app-container').style.display = 'none';
@@ -162,51 +220,51 @@ function getDashboardView() {
         <h3>📡 Import Attendance Data</h3>
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Choose your data source and follow the steps to import attendance records.</p>
         <div id="import-source-tabs" style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
-          <button class="import-source-tab active" data-source="cloud" id="tab-cloud" style="flex:1;padding:10px 16px;border:none;cursor:pointer;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;">
+          <button class="import-source-tab active" data-source="cloud" id="tab-cloud">
             <span style="font-size:18px;">☁️</span> NGTeco Office (Cloud)
           </button>
-          <button class="import-source-tab" data-source="usb" id="tab-usb" style="flex:1;padding:10px 16px;border:none;cursor:pointer;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;background:#f3f4f6;color:#6b7280;">
+          <button class="import-source-tab" data-source="usb" id="tab-usb">
             <span style="font-size:18px;">🔌</span> USB Device
           </button>
         </div>
         <div id="source-cloud-panel">
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;border-radius:8px;">
+          <div class="step-panel-row cloud-step1">
             <span style="font-size:22px;">☁️</span>
             <div style="flex:1;">
-              <p style="font-weight:600;font-size:13px;margin:0;">Step 1: Export from NGTeco Office</p>
-              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Log in → Attendance → Select date range → Export as CSV/Excel</p>
+              <p class="step-title">Step 1: Export from NGTeco Office</p>
+              <p class="step-desc">Log in → Attendance → Select date range → Export as CSV/Excel</p>
             </div>
             <button id="btn-open-portal" style="padding:8px 16px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Open NGTeco Portal ↗</button>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;padding:10px;background:linear-gradient(135deg,#f0fdf4,#eff6ff);border:1px solid #bbf7d0;border-radius:8px;">
+          <div class="step-panel-row cloud-step2">
             <span style="font-size:22px;">📥</span>
             <div style="flex:1;">
-              <p style="font-weight:600;font-size:13px;margin:0;">Step 2: Import into DTR System</p>
-              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Select the exported CSV or Excel file to import attendance records</p>
+              <p class="step-title">Step 2: Import into DTR System</p>
+              <p class="step-desc">Select the exported CSV or Excel file to import attendance records</p>
             </div>
             <button id="btn-import-cloud" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
           </div>
         </div>
         <div id="source-usb-panel" style="display:none;">
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,#fef3c7,#fef9c3);border:1px solid #fcd34d;border-radius:8px;">
+          <div class="step-panel-row usb-step1">
             <span style="font-size:22px;">🔌</span>
             <div style="flex:1;">
-              <p style="font-weight:600;font-size:13px;margin:0;">Step 1: Export from Device via USB</p>
-              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Insert USB → Menu → Data Mgmt → USB Export → Download Attendance Report</p>
+              <p class="step-title">Step 1: Export from Device via USB</p>
+              <p class="step-desc">Insert USB → Menu → Data Mgmt → USB Export → Download Attendance Report</p>
             </div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,#f0fdf4,#fef9c3);border:1px solid #bbf7d0;border-radius:8px;">
+          <div class="step-panel-row usb-step2">
             <span style="font-size:22px;">💾</span>
             <div style="flex:1;">
-              <p style="font-weight:600;font-size:13px;margin:0;">Step 2: Plug USB into Computer</p>
-              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Open the USB drive and locate the attendance CSV file (e.g. AttendanceLog.csv or .dat file)</p>
+              <p class="step-title">Step 2: Plug USB into Computer</p>
+              <p class="step-desc">Open the USB drive and locate the attendance CSV file (e.g. AttendanceLog.csv or .dat file)</p>
             </div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;padding:10px;background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;border-radius:8px;">
+          <div class="step-panel-row usb-step3">
             <span style="font-size:22px;">📥</span>
             <div style="flex:1;">
-              <p style="font-weight:600;font-size:13px;margin:0;">Step 3: Import into DTR System</p>
-              <p style="font-size:12px;color:#6b7280;margin:2px 0 0;">Select the CSV or DAT file from the USB drive to import attendance records</p>
+              <p class="step-title">Step 3: Import into DTR System</p>
+              <p class="step-desc">Select the CSV or DAT file from the USB drive to import attendance records</p>
             </div>
             <button id="btn-import-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
           </div>
@@ -216,8 +274,8 @@ function getDashboardView() {
         <h3>📋 File Preview</h3>
         <p id="import-file-name" style="color:var(--text-muted);font-size:13px;margin-bottom:4px;"></p>
         <p id="import-source-label" style="color:#6366f1;font-size:12px;font-weight:600;margin-bottom:8px;"></p>
-        <div id="import-preview-table" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;"></div>
-        <div id="import-mapping-info" style="font-size:12px;color:#374151;margin-bottom:12px;padding:8px;background:#fefce8;border:1px solid #fde68a;border-radius:6px;"></div>
+        <div id="import-preview-table" class="preview-table-container" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;"></div>
+        <div id="import-mapping-info" class="mapping-info-panel"></div>
         <div style="display:flex;gap:10px;align-items:center;">
           <button id="btn-confirm-import" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✓ Import to Database</button>
           <button id="btn-cancel-import" style="padding:8px 16px;background:#9ca3af;color:white;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
@@ -246,7 +304,7 @@ function getDtrView() {
         </select>
         <button id="btn-print-dtr" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;margin-left:auto;">Print Document</button>
       </div>
-      <div id="dtr-preview-container" style="background:#e5e7eb;padding:20px;border-radius:12px;overflow-y:auto;max-height:500px;display:flex;justify-content:center;">
+      <div id="dtr-preview-container" style="padding:20px;border-radius:12px;overflow-y:auto;max-height:500px;display:flex;justify-content:center;">
         <div style="background:white;width:6.5in;height:9in;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-style:italic;">Select a teacher and month to generate preview</div>
       </div>
     </div>`;
@@ -266,10 +324,16 @@ function getSearchTeacherView() {
         </div>
       </div>
       <div class="card" id="teacher-details-card" style="display:none;">
-        <h3 id="teacher-details-name"></h3>
-        <div style="margin-bottom:20px;padding:10px;background:#f3f4f6;border-radius:6px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+          <h3 id="teacher-details-name" style="margin:0;"></h3>
+          <span id="teacher-status-badge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;"></span>
+        </div>
+        <div style="margin-bottom:20px;padding:10px;background:var(--surface-alt);border-radius:6px;">
           <p><strong>Biometric ID:</strong> <span id="teacher-details-biometric"></span></p>
           <p><strong>Date Created:</strong> <span id="teacher-details-created"></span></p>
+          <p style="margin-top:8px;"><strong>Status:</strong>
+            <button id="btn-toggle-status" style="padding:4px 14px;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-left:6px;"></button>
+          </p>
         </div>
         <div style="margin-bottom:15px;display:flex;gap:10px;align-items:center;">
           <label for="search-month-select" style="font-weight:500;">View Month/Year:</label>
@@ -335,20 +399,22 @@ function getSettingsView() {
           <input type="text" id="school-name" placeholder="e.g. BNCHS" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
           <label style="font-weight:500;font-size:14px;margin-top:10px;">Upload Logo</label>
           <input type="file" id="school-logo" accept="image/*" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
-          <div id="logo-preview" style="margin-top:5px;min-height:60px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f9fafb;"><span style="color:#9ca3af;font-size:12px;">No logo uploaded</span></div>
+          <div id="logo-preview" style="margin-top:5px;min-height:60px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface-alt);"><span style="color:var(--text-muted);font-size:12px;">No logo uploaded</span></div>
           <button class="btn-primary" id="btn-save-branding" style="align-self:flex-start;">Save Branding</button>
           <p class="status-msg" id="branding-status"></p>
         </div>
       </div>
       <div class="card" style="margin-bottom:20px;">
         <h3>Principal Information</h3>
-        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Set the Principal's name and signature for the DTR.</p>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Set the Principal's name, position, and signature for the DTR.</p>
         <div style="display:flex;flex-direction:column;gap:10px;max-width:400px;">
           <label style="font-weight:500;font-size:14px;">Principal Name</label>
           <input type="text" id="principal-name" placeholder="e.g. JUAN DELA CRUZ, Ed.D." style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+          <label style="font-weight:500;font-size:14px;margin-top:10px;">Position</label>
+          <input type="text" id="principal-position" placeholder="e.g. Principal I / Principal-in-Charge" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
           <label style="font-weight:500;font-size:14px;margin-top:10px;">Upload Signature</label>
           <input type="file" id="principal-signature" accept="image/*" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
-          <div id="signature-preview" style="margin-top:5px;min-height:60px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f9fafb;"><span style="color:#9ca3af;font-size:12px;">No signature uploaded</span></div>
+          <div id="signature-preview" style="margin-top:5px;min-height:60px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface-alt);"><span style="color:var(--text-muted);font-size:12px;">No signature uploaded</span></div>
           <button class="btn-primary" id="btn-save-principal" style="align-self:flex-start;">Save Principal Info</button>
           <p class="status-msg" id="principal-status"></p>
         </div>
@@ -411,17 +477,13 @@ function setupDashboardView() {
     if (source === 'cloud') {
       cloudPanel.style.display = '';
       usbPanel.style.display = 'none';
-      tabCloud.style.background = 'linear-gradient(135deg,#3b82f6,#2563eb)';
-      tabCloud.style.color = 'white';
-      tabUsb.style.background = '#f3f4f6';
-      tabUsb.style.color = '#6b7280';
+      tabCloud.classList.add('active');
+      tabUsb.classList.remove('active');
     } else {
       cloudPanel.style.display = 'none';
       usbPanel.style.display = '';
-      tabUsb.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
-      tabUsb.style.color = 'white';
-      tabCloud.style.background = '#f3f4f6';
-      tabCloud.style.color = '#6b7280';
+      tabUsb.classList.add('active');
+      tabCloud.classList.remove('active');
     }
     // Reset preview when switching
     previewCard.style.display = 'none';
@@ -459,15 +521,15 @@ function setupDashboardView() {
     // Show preview table
     if (preview.preview && preview.preview.length > 0) {
       let html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
-      html += '<tr style="background:#f3f4f6;position:sticky;top:0;">';
+      html += '<tr style="position:sticky;top:0;">';
       preview.headers.forEach(h => {
-        html += `<th style="padding:4px 6px;text-align:left;border:1px solid #e5e7eb;white-space:nowrap;">${h}</th>`;
+        html += `<th style="padding:4px 6px;text-align:left;white-space:nowrap;">${h}</th>`;
       });
       html += '</tr>';
       preview.preview.forEach(row => {
         html += '<tr>';
         preview.headers.forEach(h => {
-          html += `<td style="padding:3px 6px;border:1px solid #e5e7eb;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${row[h] || ''}</td>`;
+          html += `<td style="padding:3px 6px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${row[h] || ''}</td>`;
         });
         html += '</tr>';
       });
@@ -485,11 +547,10 @@ function setupDashboardView() {
         mapHtml += `Employee: <strong>${preview.employeeName || '—'}</strong> | `;
       }
       mapHtml += `Pay Period: <strong>${preview.payPeriod || '—'}</strong><br>`;
-      mapHtml += `<span style="color:#6b7280;">Total attendance records: ${preview.totalRows}</span>`;
-      mapHtml += `<br><span style="color:#3b82f6;font-size:11px;">ℹ️ Teachers not in the database will be auto-created on import.</span>`;
+      mapHtml += `<span style="color:var(--text-muted);">Total attendance records: ${preview.totalRows}</span>`;
+      mapHtml += `<br><span style="color:var(--accent);font-size:11px;">ℹ️ Teachers not in the database will be auto-created on import.</span>`;
       mappingInfo.innerHTML = mapHtml;
-      mappingInfo.style.background = '#eff6ff';
-      mappingInfo.style.borderColor = '#93c5fd';
+      mappingInfo.className = 'mapping-info-panel';
     } else if (preview.mapping) {
       const m = preview.mapping;
       let mapHtml = '<strong>🔍 Auto-detected columns:</strong><br>';
@@ -502,10 +563,9 @@ function setupDashboardView() {
       } else if (m.timestamp) {
         mapHtml += `Timestamp → <strong>${m.timestamp}</strong>`;
       }
-      mapHtml += `<br><span style="color:#6b7280;">Total rows: ${preview.totalRows}</span>`;
+      mapHtml += `<br><span style="color:var(--text-muted);">Total rows: ${preview.totalRows}</span>`;
       mappingInfo.innerHTML = mapHtml;
-      mappingInfo.style.background = '#fefce8';
-      mappingInfo.style.borderColor = '#fde68a';
+      mappingInfo.className = 'mapping-info-panel usb-mapping';
     }
 
     previewCard.style.display = '';
@@ -577,7 +637,7 @@ async function setupDtrView() {
   // Function to refresh the teacher dropdown — called on setup AND every time the DTR tab is shown
   async function refreshTeacherSelect() {
     const currentVal = select.value; // preserve current selection if possible
-    const teachers = await ipcRenderer.invoke('get-teachers');
+    const teachers = await ipcRenderer.invoke('get-active-teachers');
     select.innerHTML = '<option value="">Select Teacher</option>';
     teachers.forEach(t => { select.innerHTML += `<option value="${t.id}">${t.name}</option>`; });
     // Restore selection if the teacher still exists
@@ -618,8 +678,8 @@ async function setupDtrView() {
     const monthVal = monthSelect.value;
     if (!monthVal) return alert('Select a month');
     const [year, month] = monthVal.split('-');
-    // Fetch fresh teacher list and time schedule before generating all DTRs
-    const freshTeachers = await ipcRenderer.invoke('get-teachers');
+    // Fetch only ACTIVE teachers and time schedule before generating all DTRs
+    const freshTeachers = await ipcRenderer.invoke('get-active-teachers');
     const freshSchedule = await ipcRenderer.invoke('get-time-schedule');
     const cols = columnSelect.value;
     let allHtml = '';
@@ -639,94 +699,120 @@ async function setupDtrView() {
 }
 
 async function setupSearchTeacherView() {
-  const searchInput = document.getElementById('teacher-search-input');
-  const searchBtn = document.getElementById('btn-search-teacher');
-  const resultsContainer = document.getElementById('teacher-search-results');
-  const detailsCard = document.getElementById('teacher-details-card');
-  const monthSelect = document.getElementById('search-month-select');
-  const refreshBtn = document.getElementById('btn-refresh-logs');
-  
   // Store current teacher ID for month changes
-  let currentTeacherId = null;
-  
-  // Clone and replace button to remove all existing event listeners
-  const newBtn = searchBtn.cloneNode(true);
-  searchBtn.parentNode.replaceChild(newBtn, searchBtn);
-  const freshBtn = document.getElementById('btn-search-teacher');
-  
-  freshBtn.addEventListener('click', async () => {
+  let currentSearchTeacherId = null;
+
+  // Search handler — always re-acquire elements by ID to avoid stale references
+  async function doSearch() {
+    const searchInput = document.getElementById('teacher-search-input');
+    const resultsContainer = document.getElementById('teacher-search-results');
+    const detailsCard = document.getElementById('teacher-details-card');
     const query = searchInput.value.trim();
     if (!query) {
-      alert('Enter a search term');
+      showToast('Enter a search term');
       return;
     }
-    
+
     console.log('Searching for:', query);
     const results = await ipcRenderer.invoke('search-teachers', query);
     console.log('Search results:', results);
-    
+
     if (results.length === 0) {
       resultsContainer.innerHTML = '<div style="padding:10px;color:#6b7280;">No teachers found</div>';
       resultsContainer.style.display = 'block';
       detailsCard.style.display = 'none';
       return;
     }
-    
+
     let html = '<div style="display:flex;flex-direction:column;">';
     results.forEach(t => {
-      html += `<div style="padding:10px;border-bottom:1px solid #e5e7eb;cursor:pointer;" class="search-result-item" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-biometric="${t.biometric_id}" data-teacher-created="${t.created_at}">
-        <strong>${t.name}</strong> (ID: ${t.biometric_id})
+      const isActive = (t.status || 'active') === 'active';
+      const statusColor = isActive ? '#10b981' : '#ef4444';
+      const statusLabel = isActive ? 'Active' : 'Inactive';
+      html += `<div style="padding:10px;border-bottom:1px solid #e5e7eb;cursor:pointer;display:flex;align-items:center;justify-content:space-between;" class="search-result-item" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-biometric="${t.biometric_id}" data-teacher-created="${t.created_at}" data-teacher-status="${t.status || 'active'}">
+        <span><strong>${t.name}</strong> (ID: ${t.biometric_id})</span>
+        <span style="padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;color:white;background:${statusColor};">${statusLabel}</span>
       </div>`;
     });
     html += '</div>';
     resultsContainer.innerHTML = html;
     resultsContainer.style.display = 'block';
-    
-    document.querySelectorAll('.search-result-item').forEach(item => {
-      item.addEventListener('click', async () => {
-        const teacherId = item.getAttribute('data-teacher-id');
-        const teacherName = item.getAttribute('data-teacher-name');
-        const biometricId = item.getAttribute('data-teacher-biometric');
-        const createdAt = item.getAttribute('data-teacher-created');
-        
-        currentTeacherId = teacherId;
-        
-        document.getElementById('teacher-details-name').textContent = teacherName;
-        document.getElementById('teacher-details-biometric').textContent = biometricId;
-        document.getElementById('teacher-details-created').textContent = new Date(createdAt).toLocaleDateString();
-        
-        // Load logs for the selected month
-        const monthVal = monthSelect.value;
-        const [year, month] = monthVal.split('-');
-        currentYear = parseInt(year);
-        currentMonth = parseInt(month);
-        const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
-        displayTeacherLogs(logs, teacherId);
-        
-        resultsContainer.style.display = 'none';
-        detailsCard.style.display = 'block';
-      });
-    });
+  }
+
+  // Direct addEventListener — NO clone-and-replace
+  document.getElementById('btn-search-teacher').addEventListener('click', doSearch);
+
+  document.getElementById('teacher-search-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') doSearch();
   });
 
-  // Add handler for month changes
-  const newRefreshBtn = refreshBtn.cloneNode(true);
-  refreshBtn.parentNode.replaceChild(newRefreshBtn, refreshBtn);
-  document.getElementById('btn-refresh-logs').addEventListener('click', async () => {
-    if (!currentTeacherId) {
-      alert('Please select a teacher first');
-      return;
-    }
-    const monthVal = monthSelect.value;
+  // Event delegation for search result clicks — avoids re-attaching listeners
+  document.getElementById('teacher-search-results').addEventListener('click', async (e) => {
+    const item = e.target.closest('.search-result-item');
+    if (!item) return;
+
+    const teacherId = item.getAttribute('data-teacher-id');
+    const teacherName = item.getAttribute('data-teacher-name');
+    const biometricId = item.getAttribute('data-teacher-biometric');
+    const createdAt = item.getAttribute('data-teacher-created');
+    const teacherStatus = item.getAttribute('data-teacher-status') || 'active';
+
+    currentSearchTeacherId = teacherId;
+
+    document.getElementById('teacher-details-name').textContent = teacherName;
+    document.getElementById('teacher-details-biometric').textContent = biometricId;
+    document.getElementById('teacher-details-created').textContent = new Date(createdAt).toLocaleDateString();
+
+    // Update status badge and toggle button
+    updateStatusUI(teacherStatus);
+
+    document.getElementById('teacher-search-results').style.display = 'none';
+    document.getElementById('teacher-details-card').style.display = 'block';
+
+    // Load logs for the selected month
+    const monthVal = document.getElementById('search-month-select').value;
     const [year, month] = monthVal.split('-');
     currentYear = parseInt(year);
     currentMonth = parseInt(month);
-    const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentTeacherId), parseInt(month), parseInt(year));
-    displayTeacherLogs(logs, currentTeacherId);
+    const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
+    displayTeacherLogs(logs, teacherId);
   });
-  
-  searchInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') freshBtn.click();
+
+  // Status toggle — event delegation on the details card
+  document.getElementById('teacher-details-card').addEventListener('click', async (e) => {
+    if (!e.target.matches('#btn-toggle-status')) return;
+    if (!currentSearchTeacherId) return;
+
+    const badge = document.getElementById('teacher-status-badge');
+    const currentStatus = badge.getAttribute('data-status');
+    const teacherName = document.getElementById('teacher-details-name').textContent;
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    const confirmMsg = newStatus === 'inactive'
+      ? `Set ${teacherName} as INACTIVE? Their DTR will no longer be printed.`
+      : `Set ${teacherName} as ACTIVE? Their DTR will be included in printing.`;
+    const confirmed = await showConfirm(confirmMsg);
+    if (!confirmed) return;
+    const res = await ipcRenderer.invoke('update-teacher-status', parseInt(currentSearchTeacherId), newStatus);
+    if (res.success) {
+      updateStatusUI(newStatus);
+      showToast(`Teacher status updated to ${newStatus}`);
+    } else {
+      showToast('Error: ' + res.message);
+    }
+  });
+
+  // Refresh logs button — direct addEventListener, no clone-and-replace
+  document.getElementById('btn-refresh-logs').addEventListener('click', async () => {
+    if (!currentSearchTeacherId) {
+      showToast('Please select a teacher first');
+      return;
+    }
+    const monthVal = document.getElementById('search-month-select').value;
+    const [year, month] = monthVal.split('-');
+    currentYear = parseInt(year);
+    currentMonth = parseInt(month);
+    const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
+    displayTeacherLogs(logs, currentSearchTeacherId);
   });
 }
 
@@ -867,7 +953,7 @@ function displayTeacherLogs(logs, teacherId) {
     logsContainer.querySelectorAll('.delete-day-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const day = btn.getAttribute('data-day');
-        if (confirm(`Are you sure you want to delete all logs for day ${day}?`)) {
+        if (await showConfirm(`Are you sure you want to delete all logs for day ${day}?`)) {
           const dayLogs = logsByDay[day];
           for (const log of dayLogs) {
             await ipcRenderer.invoke('delete-attendance-log', log.id);
@@ -967,7 +1053,7 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
   // Create a simple modal for editing
   const modalHtml = `
     <div id="edit-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;">
-      <div style="background:white;padding:20px;border-radius:8px;max-width:500px;width:90%;">
+      <div style="background:var(--modal-bg);color:var(--modal-text);padding:20px;border-radius:8px;max-width:500px;width:90%;border:1px solid var(--border);">
         <h3>Edit Day ${day} Logs</h3>
         <div id="edit-logs-list" style="margin:15px 0;max-height:350px;overflow-y:auto;">
           <!-- Logs will be inserted here -->
@@ -1025,7 +1111,7 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
 
   // Build table showing all 4 expected slots
   let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-  html += '<thead><tr style="background:#f3f4f6;"><th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;">Slot</th><th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;">Time</th><th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">Actions</th></tr></thead>';
+  html += '<thead><tr style="background:var(--surface-alt);"><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Slot</th><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Time</th><th style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">Actions</th></tr></thead>';
   html += '<tbody>';
 
   // Display all 4 slots
@@ -1041,10 +1127,10 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
     const buttonDisabled = isEmptyLog ? 'disabled' : '';
     const buttonStyle = isEmptyLog ? 'opacity:0.5;cursor:not-allowed;' : '';
     
-    html += `<tr style="border-bottom:1px solid #e5e7eb;" data-log-id="${logId}" data-slot="${slotName}">
+    html += `<tr style="border-bottom:1px solid var(--border);" data-log-id="${logId}" data-slot="${slotName}">
       <td style="padding:8px;font-weight:500;">${slotName}</td>
       <td style="padding:8px;">
-        <input type="time" class="log-time-input" data-log-id="${logId}" value="${timeValue}" style="width:120px;padding:6px;border:1px solid #e5e7eb;border-radius:4px;font-size:13px;">
+        <input type="time" class="log-time-input" data-log-id="${logId}" value="${timeValue}" style="width:120px;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--input-bg);color:var(--text-main);">
       </td>
       <td style="padding:8px;text-align:right;">
         <button class="inline-update-btn" data-log-id="${logId}" data-slot="${slotName}" style="padding:6px 10px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;${buttonStyle}" ${buttonDisabled}>Update</button>
@@ -1227,16 +1313,19 @@ function setupSettingsView() {
 
   // Principal info
   const nameInput = document.getElementById('principal-name');
+  const positionInput = document.getElementById('principal-position');
   const sigInput = document.getElementById('principal-signature');
   const sigPreview = document.getElementById('signature-preview');
   const principalStatus = document.getElementById('principal-status');
 
   nameInput.value = localStorage.getItem('principalName') || '';
+  positionInput.value = localStorage.getItem('principalPosition') || '';
   const savedSig = localStorage.getItem('principalSignature') || '';
   if (savedSig) sigPreview.innerHTML = `<img src="${savedSig}" alt="Signature" style="max-height:80px;"/>`;
 
   document.getElementById('btn-save-principal').addEventListener('click', () => {
     localStorage.setItem('principalName', nameInput.value);
+    localStorage.setItem('principalPosition', positionInput.value);
     const file = sigInput.files[0];
     if (file) {
       const reader = new FileReader();
@@ -1292,7 +1381,7 @@ async function loadUsers() {
 }
 
 window.deleteUser = async function(id) {
-  if (!confirm('Delete this user?')) return;
+  if (!(await showConfirm('Delete this user?'))) return;
   await ipcRenderer.invoke('delete-user', id);
   loadUsers();
 };
@@ -1302,10 +1391,65 @@ function showMsg(el, msg, color) {
   setTimeout(() => el.textContent = '', 3000);
 }
 
+function updateStatusUI(status) {
+  const badge = document.getElementById('teacher-status-badge');
+  const toggleBtn = document.getElementById('btn-toggle-status');
+  if (!badge || !toggleBtn) return;
+
+  badge.setAttribute('data-status', status);
+
+  if (status === 'active') {
+    badge.textContent = 'Active';
+    badge.style.background = '#d1fae5';
+    badge.style.color = '#065f46';
+    toggleBtn.textContent = 'Set Inactive';
+    toggleBtn.style.background = '#fecaca';
+    toggleBtn.style.color = '#991b1b';
+  } else {
+    badge.textContent = 'Inactive';
+    badge.style.background = '#fecaca';
+    badge.style.color = '#991b1b';
+    toggleBtn.textContent = 'Set Active';
+    toggleBtn.style.background = '#d1fae5';
+    toggleBtn.style.color = '#065f46';
+  }
+}
+
+function showConfirm(msg) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+    overlay.innerHTML = `
+      <div style="background:var(--modal-bg);padding:24px;border-radius:12px;max-width:400px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,0.3);border:1px solid var(--border);">
+        <p style="font-size:14px;color:var(--modal-text);margin-bottom:20px;line-height:1.5;">${msg}</p>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="confirm-cancel-btn" style="padding:8px 20px;background:var(--border);color:var(--text-main);border:none;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">Cancel</button>
+          <button id="confirm-ok-btn" style="padding:8px 20px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">Confirm</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#confirm-ok-btn').addEventListener('click', () => {
+      overlay.remove();
+      resolve(true);
+    });
+    overlay.querySelector('#confirm-cancel-btn').addEventListener('click', () => {
+      overlay.remove();
+      resolve(false);
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.remove();
+        resolve(false);
+      }
+    });
+  });
+}
+
 function showToast(msg, duration = 2000) {
   const toast = document.createElement('div');
   toast.textContent = msg;
-  toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:opacity 0.3s;';
+  toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--toast-bg);color:white;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:opacity 0.3s;';
   document.body.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = '0';

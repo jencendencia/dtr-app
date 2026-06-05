@@ -1,15 +1,114 @@
 :root {
-  --bg-color: #f3f4f6;
-  --sidebar-bg: #1f2937;
+  --bg-color: #ffffff;
+  --sidebar-bg: #1e293b;
   --text-main: #111827;
   --text-muted: #6b7280;
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --surface: #ffffff;
-  --border: #e5e7eb;
+  --surface-alt: #f8fafc;
+  --border: #e2e8f0;
   --danger: #ef4444;
   --danger-hover: #dc2626;
   --success: #10b981;
+  --modal-bg: #ffffff;
+  --modal-text: #374151;
+  --input-bg: #ffffff;
+  --hover-row: #f8fafc;
+  --toast-bg: #10b981;
+
+  /* Dashboard specific variables */
+  --tab-inactive-bg: #f1f5f9;
+  --tab-inactive-text: #64748b;
+  --tab-active-cloud-bg: linear-gradient(135deg, #3b82f6, #2563eb);
+  --tab-active-usb-bg: linear-gradient(135deg, #f59e0b, #d97706);
+  --panel-cloud-bg: linear-gradient(135deg, #eff6ff, #f0fdf4);
+  --panel-cloud-border: #bfdbfe;
+  --panel-usb-bg: linear-gradient(135deg, #fef3c7, #fef9c3);
+  --panel-usb-border: #fcd34d;
+  --panel-import-bg: linear-gradient(135deg, #f0fdf4, #eff6ff);
+  --panel-import-border: #bbf7d0;
+  --panel-usb-step2-bg: linear-gradient(135deg, #f0fdf4, #fef9c3);
+  --panel-usb-step2-border: #bbf7d0;
+  --panel-text-primary: #1e293b;
+  --panel-text-secondary: #475569;
+  --mapping-info-bg: #eff6ff;
+  --mapping-info-border: #93c5fd;
+  --mapping-info-text: #1e3a8a;
+  --mapping-usb-info-bg: #fefce8;
+  --mapping-usb-info-border: #fde68a;
+  --mapping-usb-info-text: #713f12;
+
+  /* Login screen variables */
+  --login-bg: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+  --login-card-bg: rgba(255, 255, 255, 0.85);
+  --login-card-border: rgba(0, 0, 0, 0.08);
+  --login-card-text: #111827;
+  --login-card-subtitle: #4b5563;
+  --login-card-label: #374151;
+  --login-card-input-bg: rgba(0, 0, 0, 0.04);
+  --login-card-input-border: rgba(0, 0, 0, 0.1);
+  --login-card-input-text: #111827;
+  --login-card-input-placeholder: rgba(0, 0, 0, 0.4);
+  --login-card-input-focus-bg: rgba(0, 0, 0, 0.06);
+  --preview-container-bg: #e2e8f0;
+}
+
+/* ─── Dark Mode Theme ────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg-color: #0f172a;
+  --sidebar-bg: #1e293b;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --surface: #1e293b;
+  --surface-alt: #1e293b;
+  --border: #334155;
+  --danger: #f87171;
+  --danger-hover: #ef4444;
+  --success: #34d399;
+  --modal-bg: #1e293b;
+  --modal-text: #e2e8f0;
+  --input-bg: #0f172a;
+  --hover-row: #334155;
+  --toast-bg: #059669;
+
+  /* Dashboard specific variables */
+  --tab-inactive-bg: #0f172a;
+  --tab-inactive-text: #94a3b8;
+  --tab-active-cloud-bg: linear-gradient(135deg, #2563eb, #1d4ed8);
+  --tab-active-usb-bg: linear-gradient(135deg, #d97706, #b45309);
+  --panel-cloud-bg: linear-gradient(135deg, #1e3a8a, #065f46);
+  --panel-cloud-border: #1e40af;
+  --panel-usb-bg: linear-gradient(135deg, #78350f, #713f12);
+  --panel-usb-border: #92400e;
+  --panel-import-bg: linear-gradient(135deg, #065f46, #1e3a8a);
+  --panel-import-border: #065f46;
+  --panel-usb-step2-bg: linear-gradient(135deg, #065f46, #78350f);
+  --panel-usb-step2-border: #065f46;
+  --panel-text-primary: #f8fafc;
+  --panel-text-secondary: #cbd5e1;
+  --mapping-info-bg: #1e3a8a;
+  --mapping-info-border: #1e40af;
+  --mapping-info-text: #eff6ff;
+  --mapping-usb-info-bg: #713f12;
+  --mapping-usb-info-border: #92400e;
+  --mapping-usb-info-text: #fefce8;
+
+  /* Login screen variables */
+  --login-bg: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  --login-card-bg: rgba(30, 41, 59, 0.7);
+  --login-card-border: rgba(255, 255, 255, 0.15);
+  --login-card-text: #ffffff;
+  --login-card-subtitle: rgba(255, 255, 255, 0.5);
+  --login-card-label: rgba(255, 255, 255, 0.7);
+  --login-card-input-bg: rgba(255, 255, 255, 0.08);
+  --login-card-input-border: rgba(255, 255, 255, 0.15);
+  --login-card-input-text: #ffffff;
+  --login-card-input-placeholder: rgba(255, 255, 255, 0.3);
+  --login-card-input-focus-bg: rgba(255, 255, 255, 0.12);
+  --preview-container-bg: #1e293b;
 }
 
 * {
@@ -24,6 +123,7 @@ body {
   color: var(--text-main);
   height: 100vh;
   overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ─── Login Overlay ──────────────────────────────────────── */
@@ -34,27 +134,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-  animation: loginBgPulse 6s ease-in-out infinite alternate;
-}
-
-@keyframes loginBgPulse {
-  0% { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); }
-  100% { background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1e293b 100%); }
+  background: var(--login-bg);
+  transition: background 0.3s ease;
 }
 
 .login-card {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--login-card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--login-card-border);
   border-radius: 20px;
   padding: 48px 40px;
   width: 400px;
   max-width: 90vw;
   text-align: center;
   animation: loginCardIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3);
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 @keyframes loginCardIn {
@@ -74,16 +170,18 @@ body {
 }
 
 .login-card h2 {
-  color: #fff;
+  color: var(--login-card-text);
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 4px;
+  transition: color 0.3s ease;
 }
 
 .login-subtitle {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--login-card-subtitle);
   font-size: 14px;
   margin-bottom: 32px;
+  transition: color 0.3s ease;
 }
 
 .login-field {
@@ -93,33 +191,34 @@ body {
 
 .login-field label {
   display: block;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--login-card-label);
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 6px;
+  transition: color 0.3s ease;
 }
 
 .login-field input {
   width: 100%;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--login-card-input-bg);
+  border: 1px solid var(--login-card-input-border);
   border-radius: 10px;
-  color: #fff;
+  color: var(--login-card-input-text);
   font-size: 14px;
   font-family: 'Inter', sans-serif;
-  transition: all 0.2s ease;
+  transition: all 0.2s ease, background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
   outline: none;
 }
 
 .login-field input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--login-card-input-placeholder);
 }
 
 .login-field input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--login-card-input-focus-bg);
 }
 
 .login-error {
@@ -158,6 +257,33 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.login-theme-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: var(--login-card-bg);
+  border: 1px solid var(--login-card-border);
+  color: var(--login-card-text);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease, background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 1001;
+}
+
+.login-theme-toggle:hover {
+  transform: scale(1.05);
+  background: var(--login-card-input-focus-bg);
+  color: var(--accent);
 }
 
 /* ─── App Container ──────────────────────────────────────── */
@@ -260,6 +386,34 @@ nav {
   color: #e5e7eb;
 }
 
+/* ─── Dark Mode Toggle ──────────────────────────────────── */
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+
+.theme-toggle-btn svg {
+  flex-shrink: 0;
+}
+
 .logout-btn {
   display: flex;
   align-items: center;
@@ -311,6 +465,7 @@ nav {
   padding: 24px;
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
   border: 1px solid var(--border);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .dashboard-header {
@@ -338,10 +493,11 @@ nav {
 }
 
 .time-schedule-card {
-  background: #f9fafb;
+  background: var(--surface-alt);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 20px;
+  transition: background-color 0.3s ease;
 }
 
 .time-schedule-card h4 {
@@ -382,8 +538,9 @@ nav {
   border-radius: 8px;
   font-size: 14px;
   font-family: 'Inter', sans-serif;
-  background: #fff;
-  transition: border-color 0.2s;
+  background: var(--input-bg);
+  color: var(--text-main);
+  transition: border-color 0.2s, background-color 0.3s;
   outline: none;
 }
 
@@ -416,7 +573,7 @@ nav {
 }
 
 .users-table tr:hover td {
-  background: #f9fafb;
+  background: var(--hover-row);
 }
 
 .role-badge {
@@ -482,7 +639,9 @@ nav {
   font-size: 14px;
   font-family: 'Inter', sans-serif;
   outline: none;
-  transition: border-color 0.2s;
+  background: var(--input-bg);
+  color: var(--text-main);
+  transition: border-color 0.2s, background-color 0.3s;
 }
 
 .form-group input:focus,
@@ -530,4 +689,167 @@ nav {
   font-weight: 500;
   min-height: 20px;
   margin-top: 8px;
+}
+
+/* ─── Dark Mode Overrides ────────────────────────────────── */
+[data-theme="dark"] .sidebar {
+  background-color: #0f172a;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .nav-btn {
+  color: #64748b;
+}
+
+[data-theme="dark"] .nav-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .nav-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+[data-theme="dark"] .card {
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2), 0 2px 4px -2px rgba(0,0,0,0.15);
+}
+
+[data-theme="dark"] .content {
+  scrollbar-color: #334155 #1e293b;
+}
+
+[data-theme="dark"] select,
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="month"],
+[data-theme="dark"] input[type="file"],
+[data-theme="dark"] input[type="time"] {
+  background: var(--input-bg);
+  color: var(--text-main);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .users-table th {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .users-table td {
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .role-badge.admin {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+}
+
+[data-theme="dark"] .role-badge.user {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+#dtr-preview-container {
+  background: var(--preview-container-bg);
+  transition: background-color 0.3s ease;
+}
+
+/* ─── Dashboard Import Refinements ──────────────────────── */
+.import-source-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+  background: var(--tab-inactive-bg);
+  color: var(--tab-inactive-text);
+}
+
+.import-source-tab.active[data-source="cloud"] {
+  background: var(--tab-active-cloud-bg) !important;
+  color: white !important;
+}
+
+.import-source-tab.active[data-source="usb"] {
+  background: var(--tab-active-usb-bg) !important;
+  color: white !important;
+}
+
+.step-panel-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transition: all 0.3s ease;
+  margin-bottom: 12px;
+}
+
+.step-panel-row.cloud-step1 {
+  background: var(--panel-cloud-bg);
+  border-color: var(--panel-cloud-border);
+}
+.step-panel-row.cloud-step2 {
+  background: var(--panel-import-bg);
+  border-color: var(--panel-import-border);
+}
+.step-panel-row.usb-step1 {
+  background: var(--panel-usb-bg);
+  border-color: var(--panel-usb-border);
+}
+.step-panel-row.usb-step2 {
+  background: var(--panel-usb-step2-bg);
+  border-color: var(--panel-usb-step2-border);
+}
+.step-panel-row.usb-step3 {
+  background: var(--panel-cloud-bg);
+  border-color: var(--panel-cloud-border);
+}
+
+.step-panel-row p.step-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 0;
+  color: var(--panel-text-primary);
+}
+
+.step-panel-row p.step-desc {
+  font-size: 12px;
+  color: var(--panel-text-secondary);
+  margin: 2px 0 0;
+}
+
+.mapping-info-panel {
+  font-size: 12px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--mapping-info-border);
+  background: var(--mapping-info-bg);
+  color: var(--mapping-info-text);
+  transition: all 0.3s ease;
+}
+
+.mapping-info-panel.usb-mapping {
+  border-color: var(--mapping-usb-info-border);
+  background: var(--mapping-usb-info-bg);
+  color: var(--mapping-usb-info-text);
+}
+
+.preview-table-container th {
+  background: var(--surface-alt);
+  color: var(--text-main);
+  border: 1px solid var(--border) !important;
+}
+
+.preview-table-container td {
+  border: 1px solid var(--border) !important;
+  color: var(--text-main);
+  background: var(--surface);
 }

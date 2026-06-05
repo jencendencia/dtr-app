@@ -33,9 +33,21 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     biometric_id INTEGER UNIQUE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
   )
 `);
+
+// Migration: add status column to existing Teachers table if it doesn't exist
+try {
+  const colCheck = db.prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('Teachers') WHERE name = 'status'").get();
+  if (colCheck.cnt === 0) {
+    db.exec("ALTER TABLE Teachers ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive'))");
+    console.log('Migration: added status column to Teachers table');
+  }
+} catch (_migrationErr) {
+  // Column already exists or table not yet created — safe to ignore
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS AttendanceLogs (

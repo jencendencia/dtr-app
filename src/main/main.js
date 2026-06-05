@@ -59,6 +59,29 @@ ipcMain.handle('get-teachers', async () => {
   }
 });
 
+ipcMain.handle('get-active-teachers', async () => {
+  try {
+    const rows = db.prepare("SELECT * FROM Teachers WHERE status = 'active' ORDER BY name ASC").all();
+    return rows;
+  } catch (err) {
+    console.error('Error fetching active teachers:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('update-teacher-status', async (event, teacherId, status) => {
+  try {
+    if (status !== 'active' && status !== 'inactive') {
+      return { success: false, message: 'Invalid status. Must be active or inactive.' };
+    }
+    db.prepare('UPDATE Teachers SET status = ? WHERE id = ?').run(status, teacherId);
+    return { success: true };
+  } catch (err) {
+    console.error('Error updating teacher status:', err);
+    return { success: false, message: err.message };
+  }
+});
+
 // ─── Attendance ──────────────────────────────────────────────
 
 ipcMain.handle('get-attendance', async (event, teacherId, month, year) => {

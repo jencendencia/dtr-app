@@ -35,6 +35,7 @@ function seed() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       biometric_id INTEGER UNIQUE NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
   `);
