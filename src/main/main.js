@@ -4,6 +4,16 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../db/connection');
 const biometricService = require('./biometricsService');
 
+let currentSessionUser = 'System';
+
+function logActivity(username, action, details) {
+  try {
+    db.prepare('INSERT INTO UserActivityLogs (username, action, details) VALUES (?, ?, ?)').run(username || 'System', action, details);
+  } catch (err) {
+    console.error('Failed to log activity:', err);
+  }
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -32,17 +42,22 @@ ipcMain.handle('login', async (event, username, password) => {
     const user = db.prepare('SELECT * FROM Users WHERE username = ?').get(username);
     if (!user) {
       console.log('User not found:', username);
+      logActivity(username, 'Login Failed', `User not found: "${username}"`);
       return { success: false, message: 'Invalid username or password.' };
     }
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       console.log('Password mismatch for user:', username);
+      logActivity(username, 'Login Failed', `Incorrect password for user: "${username}"`);
       return { success: false, message: 'Invalid username or password.' };
     }
     console.log('Login successful for user:', username);
+    currentSessionUser = username;
+    logActivity(username, 'Login Success', `Logged in successfully`);
     return { success: true, user: { id: user.id, username: user.username, role: user.role } };
   } catch (err) {
     console.error('Login error:', err);
+    logActivity(username, 'Login Error', `Login failed due to system error: ${err.message}`);
     return { success: false, message: 'Login failed. Check database connection.' };
   }
 });
@@ -74,7 +89,10 @@ ipcMain.handle('update-teacher-status', async (event, teacherId, status) => {
     if (status !== 'active' && status !== 'inactive') {
       return { success: false, message: 'Invalid status. Must be active or inactive.' };
     }
+    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(teacherId);
+    const teacherName = teacher ? teacher.name : `ID: ${teacherId}`;
     db.prepare('UPDATE Teachers SET status = ? WHERE id = ?').run(status, teacherId);
+    logActivity(currentSessionUser, 'Update Teacher Status', `Set status of "${teacherName}" to "${status}"`);
     return { success: true };
   } catch (err) {
     console.error('Error updating teacher status:', err);
@@ -138,7 +156,7 @@ ipcMain.handle('update-attendance-time', async (event, logId, newTime) => {
     const [hours, minutes] = newTime.split(':');
     
     // Get current log to get the date
-    const logRow = db.prepare("SELECT strftime('%Y-%m-%d %H:%M:%S', log_time) as log_time FROM AttendanceLogs WHERE id = ?").get(logId);
+    const logRow = db.prepare("SELECT teacher_id, strftime('%Y-%m-%d %H:%M:%S', log_time) as log_time, log_type FROM AttendanceLogs WHERE id = ?").get(logId);
     if (!logRow) {
       console.log('Log not found:', logId);
       return { success: false, message: 'Log not found' };
@@ -160,6 +178,11 @@ ipcMain.handle('update-attendance-time', async (event, logId, newTime) => {
     // Verify the update actually happened
     const updatedRow = db.prepare('SELECT log_time FROM AttendanceLogs WHERE id = ?').get(logId);
     console.log('Verified new log_time:', updatedRow.log_time);
+    
+    // Log
+    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(logRow.teacher_id);
+    const teacherName = teacher ? teacher.name : `ID: ${logRow.teacher_id}`;
+    logActivity(currentSessionUser, 'Edit Attendance Time', `Updated check-${logRow.log_type.toLowerCase() === 'check-in' ? 'in' : 'out'} time for "${teacherName}" on ${dateStr} from "${currentLogTime.substring(11, 16)}" to "${newTime}"`);
     
     return { success: true, message: 'Time updated successfully' };
   } catch (err) {
@@ -197,6 +220,12 @@ ipcMain.handle('create-attendance-log', async (event, teacherId, day, newTime, l
     ).run(teacherId, newDateTime, logType);
     
     console.log('Create result - inserted row ID:', result.lastInsertRowid);
+    
+    // Log
+    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(teacherId);
+    const teacherName = teacher ? teacher.name : `ID: ${teacherId}`;
+    logActivity(currentSessionUser, 'Create Attendance Log', `Added manually a "${logType}" log for "${teacherName}" on ${dateStr} at "${newTime}"`);
+
     return { success: true, message: 'Log created successfully', logId: result.lastInsertRowid };
   } catch (err) {
     console.error('Error creating attendance log:', err);
@@ -206,7 +235,14 @@ ipcMain.handle('create-attendance-log', async (event, teacherId, day, newTime, l
 
 ipcMain.handle('delete-attendance-log', async (event, logId) => {
   try {
+    const logRow = db.prepare("SELECT teacher_id, strftime('%Y-%m-%d %H:%M:%S', log_time) as log_time, log_type FROM AttendanceLogs WHERE id = ?").get(logId);
     db.prepare('DELETE FROM AttendanceLogs WHERE id = ?').run(logId);
+    
+    if (logRow) {
+      const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(logRow.teacher_id);
+      const teacherName = teacher ? teacher.name : `ID: ${logRow.teacher_id}`;
+      logActivity(currentSessionUser, 'Delete Attendance Log', `Deleted "${logRow.log_type}" log of "${teacherName}" on ${logRow.log_time}`);
+    }
     return { success: true, message: 'Log deleted successfully' };
   } catch (err) {
     console.error('Error deleting attendance log:', err);
@@ -260,6 +296,7 @@ ipcMain.handle('save-time-schedule', async (event, schedule) => {
         pm_time_out_start = excluded.pm_time_out_start,
         pm_time_out = excluded.pm_time_out
     `).run(am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out);
+    logActivity(currentSessionUser, 'Update Time Schedule', `Saved new time schedule. AM: ${am_time_in}-${am_time_in_end}, PM: ${pm_time_in}-${pm_time_in_end}`);
     return { success: true };
   } catch (err) {
     console.error('Error saving time schedule:', err);
@@ -283,6 +320,7 @@ ipcMain.handle('add-user', async (event, username, password, role) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
     db.prepare('INSERT INTO Users (username, password, role) VALUES (?, ?, ?)').run(username, hashed, role);
+    logActivity(currentSessionUser, 'Add User', `Added new user: "${username}" with role: "${role}"`);
     return { success: true };
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -295,7 +333,7 @@ ipcMain.handle('add-user', async (event, username, password, role) => {
 
 ipcMain.handle('change-password', async (event, userId, currentPassword, newPassword) => {
   try {
-    const user = db.prepare('SELECT password FROM Users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT username, password FROM Users WHERE id = ?').get(userId);
     if (!user) {
       return { success: false, message: 'User not found.' };
     }
@@ -305,6 +343,7 @@ ipcMain.handle('change-password', async (event, userId, currentPassword, newPass
     }
     const hashed = await bcrypt.hash(newPassword, 10);
     db.prepare('UPDATE Users SET password = ? WHERE id = ?').run(hashed, userId);
+    logActivity(currentSessionUser, 'Change Password', `Changed password for user: "${user.username}"`);
     return { success: true };
   } catch (err) {
     console.error('Error changing password:', err);
@@ -314,7 +353,11 @@ ipcMain.handle('change-password', async (event, userId, currentPassword, newPass
 
 ipcMain.handle('delete-user', async (event, userId) => {
   try {
+    const user = db.prepare('SELECT username FROM Users WHERE id = ?').get(userId);
     db.prepare('DELETE FROM Users WHERE id = ?').run(userId);
+    if (user) {
+      logActivity(currentSessionUser, 'Delete User', `Deleted user: "${user.username}"`);
+    }
     return { success: true };
   } catch (err) {
     console.error('Error deleting user:', err);
@@ -535,6 +578,7 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
       summary += ` Auto-created ${autoCreatedList.length} new teacher(s): ${autoCreatedList.join(', ')}.`;
     }
     console.log('[Import]', summary);
+    logActivity(currentSessionUser, 'Import Attendance', `File: "${path.basename(filePath)}". ${summary}`);
     return { success: true, message: summary, synced: insertedCount, skipped: skippedCount, filtered: filteredCount, autoCreated: autoCreatedList.length, autoCreatedNames: autoCreatedList };
   } catch (err) {
     console.error('[Import] Error:', err);
@@ -621,6 +665,16 @@ function fuzzyMatchTeacher(recordName, nameMap, nameList) {
   
   return null;
 }
+
+ipcMain.handle('get-activity-logs', async () => {
+  try {
+    const rows = db.prepare('SELECT * FROM UserActivityLogs ORDER BY created_at DESC LIMIT 1000').all();
+    return rows;
+  } catch (err) {
+    console.error('Error fetching activity logs:', err);
+    return [];
+  }
+});
 
 // ─── Print DTR ──────────────────────────────────────────────
 

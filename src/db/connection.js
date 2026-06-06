@@ -82,9 +82,19 @@ db.exec(`
     pm_time_out TEXT NOT NULL DEFAULT '18:00:00',
     updated_at TEXT DEFAULT (datetime('now', 'localtime'))
   )
-`);
+  `);
 
-console.log('SQLite database ready:', dbPath);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS UserActivityLogs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      action TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `);
+
+  console.log('SQLite database ready:', dbPath);
 
 // ─── First-run: auto-create default admin if no users exist ──
 

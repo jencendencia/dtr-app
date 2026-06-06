@@ -188,7 +188,7 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
       </div>
       <table class="dtr-table">
         <thead>
-          <tr><th rowspan="2">Days</th><th colspan="2">A. M.</th><th colspan="2" class="thick-col">P. M.</th><th colspan="2">UNDER TIME</th></tr>
+          <tr><th rowspan="2">Days</th><th colspan="2">A. M.</th><th colspan="2" class="thick-col">P. M.</th><th colspan="2">UNDERTIME</th></tr>
           <tr><th>ARRIVAL</th><th>DEPAR-<br>TURE</th><th class="thick-col">ARRIVAL</th><th class="thick-col">DEPAR-<br>TURE</th><th>Hours</th><th>Minutes</th></tr>
         </thead>
         <tbody>
@@ -197,9 +197,12 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
         </tbody>
       </table>
       <div class="certify-text">I CERTIFY on my honor that the above is a true and correct report of the hours of work performed, record of which was made daily at the time of arrival and departure from office.</div>
-      <div class="signature-line"></div>
-      <div class="double-signature-line"></div>
-      <div style="margin-top:30px;margin-left:auto;width:250px;text-align:center;position:relative;">
+      <div style="margin-top:5px;margin-left:auto;margin-right:auto;width:250px;text-align:center;">
+        <div style="border-bottom:1px solid #000;height:25px;margin-bottom:3px;"></div>
+        <div style="font-weight:bold;font-size:12px;text-transform:uppercase;">${name}</div>
+      </div>
+      <div style="text-align:left;font-size:12px;font-style:italic;margin-top:15px;margin-bottom:5px;">VERIFIED as to the prescribed office hours:</div>
+      <div style="margin-top:25px;margin-left:auto;margin-right:auto;width:250px;text-align:center;position:relative;">
         ${principalSignature ? `<img src="${principalSignature}" style="max-height:60px;max-width:200px;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:1;">` : ''}
         <div style="font-weight:bold;font-size:14px;position:relative;z-index:2;padding-bottom:2px;">${principalName}</div>
         <div class="in-charge-line" style="width:100%;">${principalPosition || 'In-Charge'}</div>

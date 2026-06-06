@@ -118,9 +118,13 @@ function setupLogin() {
         document.getElementById('app-container').style.display = 'flex';
         document.getElementById('user-name').textContent = currentUser.username;
         document.getElementById('user-avatar').textContent = currentUser.username[0].toUpperCase();
-        // Hide admin nav for non-admin users
-        if (currentUser.role !== 'admin') {
+        // Show/hide admin and logs nav depending on user role
+        if (currentUser.role === 'admin') {
+          document.getElementById('nav-admin').style.display = '';
+          document.getElementById('nav-logs').style.display = '';
+        } else {
           document.getElementById('nav-admin').style.display = 'none';
+          document.getElementById('nav-logs').style.display = 'none';
         }
         try {
           initApp();
@@ -148,11 +152,22 @@ function setupLogin() {
 
 function initApp() {
   const mainContent = document.getElementById('main-content');
-  const navBtns = document.querySelectorAll('.nav-btn');
+  
+  // Clone and replace nav buttons to clear old event listeners
+  const sidebarNav = document.querySelector('nav');
+  const oldNavBtns = sidebarNav.querySelectorAll('.nav-btn');
+  oldNavBtns.forEach(btn => {
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+  });
+  const navBtns = sidebarNav.querySelectorAll('.nav-btn');
 
-  // Logout
+  // Clone and replace logout button to prevent multiple listeners
+  const btnLogout = document.getElementById('btn-logout');
+  const newBtnLogout = btnLogout.cloneNode(true);
+  btnLogout.parentNode.replaceChild(newBtnLogout, btnLogout);
 
-  document.getElementById('btn-logout').addEventListener('click', () => {
+  newBtnLogout.addEventListener('click', () => {
     currentUser = null;
     document.getElementById('app-container').style.display = 'none';
     document.getElementById('login-overlay').style.display = 'flex';
@@ -161,6 +176,15 @@ function initApp() {
     document.getElementById('login-error').textContent = '';
     document.getElementById('login-btn').disabled = false;
     document.getElementById('login-btn').textContent = 'Sign In';
+
+    // Clear views to prevent state/DOM leak between users
+    mainContent.innerHTML = '';
+    for (const key in viewCache) {
+      delete viewCache[key];
+    }
+    for (const key in viewSetupDone) {
+      delete viewSetupDone[key];
+    }
   });
 
   // Cache views so switching tabs preserves state (e.g. generated DTR previews)
@@ -168,6 +192,11 @@ function initApp() {
   const viewSetupDone = {};
 
   function showView(viewId) {
+    // Restrict admin-only views
+    if ((viewId === 'admin' || viewId === 'logs') && (!currentUser || currentUser.role !== 'admin')) {
+      viewId = 'dashboard';
+    }
+
     // Hide all cached views
     Object.values(viewCache).forEach(el => el.style.display = 'none');
 
@@ -179,6 +208,7 @@ function initApp() {
       else if (viewId === 'dtr') wrapper.innerHTML = getDtrView();
       else if (viewId === 'search-teacher') wrapper.innerHTML = getSearchTeacherView();
       else if (viewId === 'admin') wrapper.innerHTML = getAdminView();
+      else if (viewId === 'logs') wrapper.innerHTML = getLogsView();
       else if (viewId === 'settings') wrapper.innerHTML = getSettingsView();
       mainContent.appendChild(wrapper);
       viewCache[viewId] = wrapper;
@@ -187,6 +217,15 @@ function initApp() {
     // Show the requested view
     viewCache[viewId].style.display = '';
 
+    // Sync active nav button class
+    navBtns.forEach(b => {
+      if (b.id === `nav-${viewId}`) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+
     // Run setup only once per view
     if (!viewSetupDone[viewId]) {
       viewSetupDone[viewId] = true;
@@ -194,6 +233,7 @@ function initApp() {
       else if (viewId === 'dtr') setupDtrView();
       else if (viewId === 'search-teacher') setupSearchTeacherView();
       else if (viewId === 'admin') setupAdminView();
+      else if (viewId === 'logs') setupLogsView();
       else if (viewId === 'settings') setupSettingsView();
     }
   }
@@ -202,10 +242,13 @@ function initApp() {
 
   navBtns.forEach(btn => {
     btn.addEventListener('click', (e) => {
-      navBtns.forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
       const viewId = e.target.id.replace('nav-', '');
       showView(viewId);
+      
+      // If switching to logs tab, refresh the logs table
+      if (viewId === 'logs' && typeof refreshLogsTable === 'function') {
+        refreshLogsTable();
+      }
     });
   });
 }
@@ -1455,4 +1498,134 @@ function showToast(msg, duration = 2000) {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
   }, duration);
+}
+
+// ─── USERS LOG VIEW ─────────────────────────────────────────
+
+let allActivityLogs = [];
+
+function getLogsView() {
+  return `
+    <div class="view-section active" id="logs-view">
+      <div class="dashboard-header">
+        <h1>Users Log</h1>
+        <p>Audit trail of all system transactions and activity logs</p>
+      </div>
+      <div class="card" style="margin-bottom:20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <input type="text" id="logs-search-input" placeholder="Search logs (username, action, details)..." style="padding:8px 12px; border-radius:6px; border:1px solid var(--border); flex:1; min-width:200px;">
+        <button id="btn-refresh-logs-table" class="btn-primary" style="padding:8px 16px; background:var(--accent); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:500;">🔄 Refresh Logs</button>
+      </div>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="overflow-x:auto;">
+          <table class="users-table" style="width:100%; border-collapse:collapse; margin:0;">
+            <thead>
+              <tr style="background:var(--surface-alt); border-bottom:2px solid var(--border);">
+                <th style="text-align:left; padding:12px 16px; font-weight:600;">Timestamp</th>
+                <th style="text-align:left; padding:12px 16px; font-weight:600;">User</th>
+                <th style="text-align:left; padding:12px 16px; font-weight:600;">Action</th>
+                <th style="text-align:left; padding:12px 16px; font-weight:600;">Details</th>
+              </tr>
+            </thead>
+            <tbody id="logs-tbody">
+              <tr>
+                <td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">Loading activity logs...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function refreshLogsTable() {
+  const tbody = document.getElementById('logs-tbody');
+  if (!tbody) return;
+  
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">Loading activity logs...</td></tr>';
+  
+  try {
+    const logs = await ipcRenderer.invoke('get-activity-logs');
+    allActivityLogs = logs;
+    displayActivityLogs(logs);
+  } catch (err) {
+    console.error('Error fetching logs:', err);
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:30px; color:#ef4444; font-weight:500;">Failed to load logs: ${err.message}</td></tr>`;
+  }
+}
+
+function displayActivityLogs(logs) {
+  const tbody = document.getElementById('logs-tbody');
+  if (!tbody) return;
+  
+  if (logs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">No transaction logs found.</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  logs.forEach(log => {
+    let badgeColor = 'var(--text-muted)';
+    let badgeBg = 'var(--surface-alt)';
+    const act = log.action.toLowerCase();
+    
+    if (act.includes('success') || act.includes('add') || act.includes('create') || act.includes('save')) {
+      badgeColor = '#10b981';
+      badgeBg = 'rgba(16, 185, 129, 0.1)';
+    } else if (act.includes('fail') || act.includes('delete')) {
+      badgeColor = '#ef4444';
+      badgeBg = 'rgba(239, 68, 68, 0.1)';
+    } else if (act.includes('update') || act.includes('edit')) {
+      badgeColor = '#f59e0b';
+      badgeBg = 'rgba(245, 158, 11, 0.1)';
+    } else if (act.includes('import')) {
+      badgeColor = '#6366f1';
+      badgeBg = 'rgba(99, 102, 241, 0.1)';
+    }
+    
+    const formattedDate = new Date(log.created_at).toLocaleString();
+    
+    html += `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:12px 16px; white-space:nowrap; font-size:13px; color:var(--text-muted);">${formattedDate}</td>
+        <td style="padding:12px 16px; font-weight:600; font-size:13px; color:var(--text-main);">${log.username}</td>
+        <td style="padding:12px 16px; white-space:nowrap;">
+          <span style="padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600; color:${badgeColor}; background:${badgeBg}; display:inline-block;">
+            ${log.action}
+          </span>
+        </td>
+        <td style="padding:12px 16px; font-size:13px; color:var(--text-main); max-width:400px; word-wrap:break-word;">${log.details}</td>
+      </tr>
+    `;
+  });
+  tbody.innerHTML = html;
+}
+
+function setupLogsView() {
+  const searchInput = document.getElementById('logs-search-input');
+  const btnRefresh = document.getElementById('btn-refresh-logs-table');
+  
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', refreshLogsTable);
+  }
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.toLowerCase().trim();
+      if (!q) {
+        displayActivityLogs(allActivityLogs);
+        return;
+      }
+      
+      const filtered = allActivityLogs.filter(log => 
+        log.username.toLowerCase().includes(q) || 
+        log.action.toLowerCase().includes(q) || 
+        log.details.toLowerCase().includes(q) ||
+        new Date(log.created_at).toLocaleString().toLowerCase().includes(q)
+      );
+      displayActivityLogs(filtered);
+    });
+  }
+  
+  refreshLogsTable();
 }
