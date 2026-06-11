@@ -94,6 +94,22 @@ db.exec(`
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS TeacherTimeSchedule (
+      teacher_id INTEGER PRIMARY KEY,
+      am_time_in TEXT NOT NULL DEFAULT '07:00:00',
+      am_time_in_end TEXT NOT NULL DEFAULT '08:00:00',
+      am_time_out_start TEXT NOT NULL DEFAULT '12:00:00',
+      am_time_out TEXT NOT NULL DEFAULT '12:20:00',
+      pm_time_in TEXT NOT NULL DEFAULT '12:35:00',
+      pm_time_in_end TEXT NOT NULL DEFAULT '13:00:00',
+      pm_time_out_start TEXT NOT NULL DEFAULT '17:00:00',
+      pm_time_out TEXT NOT NULL DEFAULT '18:00:00',
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (teacher_id) REFERENCES Teachers(id) ON DELETE CASCADE
+    )
+  `);
+
   console.log('SQLite database ready:', dbPath);
 
 // ─── First-run: auto-create default admin if no users exist ──

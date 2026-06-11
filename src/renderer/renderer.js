@@ -371,21 +371,70 @@ function getSearchTeacherView() {
           <h3 id="teacher-details-name" style="margin:0;"></h3>
           <span id="teacher-status-badge" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;"></span>
         </div>
-        <div style="margin-bottom:20px;padding:10px;background:var(--surface-alt);border-radius:6px;">
-          <p><strong>Biometric ID:</strong> <span id="teacher-details-biometric"></span></p>
-          <p><strong>Date Created:</strong> <span id="teacher-details-created"></span></p>
-          <p style="margin-top:8px;"><strong>Status:</strong>
+        <div style="margin-bottom:20px;padding:10px;background:var(--surface-alt);border-radius:6px;display:flex;flex-wrap:wrap;gap:20px;">
+          <p style="margin:0;"><strong>Biometric ID:</strong> <span id="teacher-details-biometric"></span></p>
+          <p style="margin:0;"><strong>Date Created:</strong> <span id="teacher-details-created"></span></p>
+          <p style="margin:0;display:flex;align-items:center;"><strong>Status:</strong>
             <button id="btn-toggle-status" style="padding:4px 14px;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-left:6px;"></button>
           </p>
         </div>
-        <div style="margin-bottom:15px;display:flex;gap:10px;align-items:center;">
-          <label for="search-month-select" style="font-weight:500;">View Month/Year:</label>
-          <input type="month" id="search-month-select" value="2026-06" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
-          <button id="btn-refresh-logs" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Refresh Logs</button>
+
+        <!-- Inner tabs for Teacher details -->
+        <div class="teacher-tabs" style="display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:5px;">
+          <button class="teacher-tab-btn active" id="tab-teacher-attendance" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid var(--accent);cursor:pointer;font-weight:600;color:var(--text);">Attendance Records</button>
+          <button class="teacher-tab-btn" id="tab-teacher-config" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:500;color:var(--text-muted);">Specific Time Config</button>
         </div>
-        <h4 style="margin-bottom:15px;">Attendance Records</h4>
-        <div id="teacher-logs-container" style="max-height:400px;overflow-y:auto;">
-          <!-- Logs will be inserted here -->
+
+        <!-- Attendance Records Tab Panel -->
+        <div id="teacher-attendance-panel">
+          <div style="margin-bottom:15px;display:flex;gap:10px;align-items:center;">
+            <label for="search-month-select" style="font-weight:500;">View Month/Year:</label>
+            <input type="month" id="search-month-select" value="2026-06" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+            <button id="btn-refresh-logs" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Refresh Logs</button>
+          </div>
+          <h4 style="margin-bottom:15px;">Attendance Records</h4>
+          <div id="teacher-logs-container" style="max-height:400px;overflow-y:auto;">
+            <!-- Logs will be inserted here -->
+          </div>
+        </div>
+
+        <!-- Specific Time Config Tab Panel -->
+        <div id="teacher-config-panel" style="display:none;">
+          <h4 style="margin-top:0;margin-bottom:10px;">Specific Time Schedule Configuration</h4>
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Set custom time-in and time-out rules for this teacher. When enabled, these override the global configuration.</p>
+          
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:10px;background:var(--surface-alt);border-radius:6px;border:1px solid var(--border);">
+            <input type="checkbox" id="enable-teacher-config" style="cursor:pointer;width:18px;height:18px;">
+            <label for="enable-teacher-config" style="font-weight:600;cursor:pointer;margin:0;">Use Teacher-Specific Time Configuration</label>
+          </div>
+          
+          <div id="teacher-config-inputs-container" style="display:none;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:20px;margin-bottom:20px;">
+              <div class="time-schedule-card" style="border:1px solid var(--border);padding:15px;border-radius:8px;background:var(--surface-alt);">
+                <h4 style="margin-top:0;margin-bottom:12px;color:var(--accent);">🌅 Morning (A.M.)</h4>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><label>Time In:</label><input type="time" id="teacher-am-in" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><label>Grace Until:</label><input type="time" id="teacher-am-in-end" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;"><label>Out From:</label><input type="time" id="teacher-am-out-start" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><label>Out Until:</label><input type="time" id="teacher-am-out" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                </div>
+              </div>
+              <div class="time-schedule-card" style="border:1px solid var(--border);padding:15px;border-radius:8px;background:var(--surface-alt);">
+                <h4 style="margin-top:0;margin-bottom:12px;color:var(--accent);">🌇 Afternoon (P.M.)</h4>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><label>Time In:</label><input type="time" id="teacher-pm-in" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><label>Grace Until:</label><input type="time" id="teacher-pm-in-end" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;"><label>Out From:</label><input type="time" id="teacher-pm-out-start" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><label>Out Until:</label><input type="time" id="teacher-pm-out" style="padding:5px;border-radius:4px;border:1px solid var(--border);"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div style="display:flex;align-items:center;gap:12px;">
+            <button class="btn-primary" id="btn-save-teacher-schedule">Save Configuration</button>
+            <span class="status-msg" id="teacher-schedule-status"></span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -705,8 +754,8 @@ async function setupDtrView() {
     const teacherId = select.value; const monthVal = monthSelect.value;
     if (!teacherId || !monthVal) return alert('Select teacher and month');
     const [year, month] = monthVal.split('-');
-    // Fetch fresh time schedule before generating DTR
-    const freshSchedule = await ipcRenderer.invoke('get-time-schedule');
+    // Fetch fresh effective time schedule before generating DTR
+    const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
     const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
     const dtrHtml = generateDTRHtml(select.options[select.selectedIndex].text, monthNames[parseInt(month)], year, logs, freshSchedule);
     const cols = columnSelect.value;
@@ -721,14 +770,15 @@ async function setupDtrView() {
     const monthVal = monthSelect.value;
     if (!monthVal) return alert('Select a month');
     const [year, month] = monthVal.split('-');
-    // Fetch only ACTIVE teachers and time schedule before generating all DTRs
+    // Fetch only ACTIVE teachers before generating all DTRs
     const freshTeachers = await ipcRenderer.invoke('get-active-teachers');
-    const freshSchedule = await ipcRenderer.invoke('get-time-schedule');
     const cols = columnSelect.value;
     let allHtml = '';
     for (const t of freshTeachers) {
       const logs = await ipcRenderer.invoke('get-attendance', t.id, parseInt(month), parseInt(year));
-      const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, freshSchedule);
+      // Fetch each teacher's individual effective time schedule
+      const teacherSchedule = await ipcRenderer.invoke('get-effective-schedule', t.id);
+      const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, teacherSchedule);
       if (cols === '2') {
         allHtml += `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
       } else {
@@ -744,6 +794,57 @@ async function setupDtrView() {
 async function setupSearchTeacherView() {
   // Store current teacher ID for month changes
   let currentSearchTeacherId = null;
+
+  // Tabs selectors
+  const tabAttendance = document.getElementById('tab-teacher-attendance');
+  const tabConfig = document.getElementById('tab-teacher-config');
+  const panelAttendance = document.getElementById('teacher-attendance-panel');
+  const panelConfig = document.getElementById('teacher-config-panel');
+
+  function switchTeacherTab(tabName) {
+    if (tabName === 'attendance') {
+      tabAttendance.classList.add('active');
+      tabAttendance.style.borderBottom = '2px solid var(--accent)';
+      tabAttendance.style.fontWeight = '600';
+      tabAttendance.style.color = 'var(--text)';
+      
+      tabConfig.classList.remove('active');
+      tabConfig.style.borderBottom = '2px solid transparent';
+      tabConfig.style.fontWeight = '500';
+      tabConfig.style.color = 'var(--text-muted)';
+      
+      panelAttendance.style.display = '';
+      panelConfig.style.display = 'none';
+    } else {
+      tabConfig.classList.add('active');
+      tabConfig.style.borderBottom = '2px solid var(--accent)';
+      tabConfig.style.fontWeight = '600';
+      tabConfig.style.color = 'var(--text)';
+      
+      tabAttendance.classList.remove('active');
+      tabAttendance.style.borderBottom = '2px solid transparent';
+      tabAttendance.style.fontWeight = '500';
+      tabAttendance.style.color = 'var(--text-muted)';
+      
+      panelAttendance.style.display = 'none';
+      panelConfig.style.display = '';
+    }
+  }
+
+  if (tabAttendance && tabConfig) {
+    tabAttendance.addEventListener('click', () => switchTeacherTab('attendance'));
+    tabConfig.addEventListener('click', () => switchTeacherTab('config'));
+  }
+
+  // Config UI references
+  const enableConfigCheckbox = document.getElementById('enable-teacher-config');
+  const configInputsContainer = document.getElementById('teacher-config-inputs-container');
+
+  if (enableConfigCheckbox) {
+    enableConfigCheckbox.addEventListener('change', () => {
+      configInputsContainer.style.display = enableConfigCheckbox.checked ? 'block' : 'none';
+    });
+  }
 
   // Search handler — always re-acquire elements by ID to avoid stale references
   async function doSearch() {
@@ -812,6 +913,43 @@ async function setupSearchTeacherView() {
     document.getElementById('teacher-search-results').style.display = 'none';
     document.getElementById('teacher-details-card').style.display = 'block';
 
+    // Reset status message
+    document.getElementById('teacher-schedule-status').textContent = '';
+
+    // Load custom schedule if exists
+    const teacherSchedule = await ipcRenderer.invoke('get-teacher-time-schedule', parseInt(teacherId));
+    const globalSchedule = await ipcRenderer.invoke('get-time-schedule');
+
+    if (teacherSchedule) {
+      enableConfigCheckbox.checked = true;
+      configInputsContainer.style.display = 'block';
+      
+      document.getElementById('teacher-am-in').value = teacherSchedule.am_time_in;
+      document.getElementById('teacher-am-in-end').value = teacherSchedule.am_time_in_end;
+      document.getElementById('teacher-am-out-start').value = teacherSchedule.am_time_out_start;
+      document.getElementById('teacher-am-out').value = teacherSchedule.am_time_out;
+      document.getElementById('teacher-pm-in').value = teacherSchedule.pm_time_in;
+      document.getElementById('teacher-pm-in-end').value = teacherSchedule.pm_time_in_end;
+      document.getElementById('teacher-pm-out-start').value = teacherSchedule.pm_time_out_start;
+      document.getElementById('teacher-pm-out').value = teacherSchedule.pm_time_out;
+    } else {
+      enableConfigCheckbox.checked = false;
+      configInputsContainer.style.display = 'none';
+      
+      // Pre-fill fields with global schedule as sensible default
+      document.getElementById('teacher-am-in').value = globalSchedule.am_time_in;
+      document.getElementById('teacher-am-in-end').value = globalSchedule.am_time_in_end;
+      document.getElementById('teacher-am-out-start').value = globalSchedule.am_time_out_start;
+      document.getElementById('teacher-am-out').value = globalSchedule.am_time_out;
+      document.getElementById('teacher-pm-in').value = globalSchedule.pm_time_in;
+      document.getElementById('teacher-pm-in-end').value = globalSchedule.pm_time_in_end;
+      document.getElementById('teacher-pm-out-start').value = globalSchedule.pm_time_out_start;
+      document.getElementById('teacher-pm-out').value = globalSchedule.pm_time_out;
+    }
+
+    // Reset tab to attendance
+    switchTeacherTab('attendance');
+
     // Load logs for the selected month
     const monthVal = document.getElementById('search-month-select').value;
     const [year, month] = monthVal.split('-');
@@ -819,6 +957,60 @@ async function setupSearchTeacherView() {
     currentMonth = parseInt(month);
     const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
     displayTeacherLogs(logs, teacherId);
+  });
+
+  // Save specific schedule
+  document.getElementById('btn-save-teacher-schedule').addEventListener('click', async () => {
+    if (!currentSearchTeacherId) return;
+
+    const statusEl = document.getElementById('teacher-schedule-status');
+    statusEl.textContent = 'Saving...';
+    statusEl.style.color = 'var(--text-muted)';
+
+    if (enableConfigCheckbox.checked) {
+      const schedule = {
+        am_time_in: document.getElementById('teacher-am-in').value,
+        am_time_in_end: document.getElementById('teacher-am-in-end').value,
+        am_time_out_start: document.getElementById('teacher-am-out-start').value,
+        am_time_out: document.getElementById('teacher-am-out').value,
+        pm_time_in: document.getElementById('teacher-pm-in').value,
+        pm_time_in_end: document.getElementById('teacher-pm-in-end').value,
+        pm_time_out_start: document.getElementById('teacher-pm-out-start').value,
+        pm_time_out: document.getElementById('teacher-pm-out').value
+      };
+
+      const res = await ipcRenderer.invoke('save-teacher-time-schedule', parseInt(currentSearchTeacherId), schedule);
+      if (res.success) {
+        statusEl.textContent = '✓ Saved specific schedule!';
+        statusEl.style.color = '#10b981';
+        showToast('Teacher-specific schedule saved');
+        
+        // Refresh logs immediately with new schedule calculations
+        const monthVal = document.getElementById('search-month-select').value;
+        const [year, month] = monthVal.split('-');
+        const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
+        displayTeacherLogs(logs, currentSearchTeacherId);
+      } else {
+        statusEl.textContent = 'Error: ' + res.message;
+        statusEl.style.color = '#ef4444';
+      }
+    } else {
+      const res = await ipcRenderer.invoke('delete-teacher-time-schedule', parseInt(currentSearchTeacherId));
+      if (res.success) {
+        statusEl.textContent = '✓ Specific schedule disabled (using global)';
+        statusEl.style.color = '#10b981';
+        showToast('Teacher-specific schedule disabled');
+        
+        // Refresh logs immediately to reflect global schedule calculations
+        const monthVal = document.getElementById('search-month-select').value;
+        const [year, month] = monthVal.split('-');
+        const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
+        displayTeacherLogs(logs, currentSearchTeacherId);
+      } else {
+        statusEl.textContent = 'Error: ' + res.message;
+        statusEl.style.color = '#ef4444';
+      }
+    }
   });
 
   // Status toggle — event delegation on the details card
@@ -867,7 +1059,7 @@ function displayTeacherLogs(logs, teacherId) {
   }
   
   // Load time schedule for calculation
-  ipcRenderer.invoke('get-time-schedule').then(timeSchedule => {
+  ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId)).then(timeSchedule => {
     // Group logs by day - parse day directly from string to avoid timezone issues
     const logsByDay = {};
     logs.forEach(l => {
@@ -930,31 +1122,31 @@ function displayTeacherLogs(logs, teacherId) {
         dailyUndertime = 480; // 8 hours
       } else {
         // --- Morning ---
-        if (amInMins !== null && amOutMins === null) {
-          // Rule 1: Timed in AM but never timed out AM → absent morning (4 hours)
+        if (amInMins === null || amOutMins === null) {
+          // Missing check-in, check-out, or both -> absent morning (4 hours)
           dailyUndertime += 240;
         } else {
           // AM Tardiness: Late if after grace period
-          if (amInMins !== null && amInMins > sAmInEnd) {
+          if (amInMins > sAmInEnd) {
             dailyUndertime += (amInMins - sAmInEnd);
           }
           // AM Undertime: Leaving before scheduled out
-          if (amOutMins !== null && amOutMins < sAmOutStart) {
+          if (amOutMins < sAmOutStart) {
             dailyUndertime += (sAmOutStart - amOutMins);
           }
         }
 
         // --- Afternoon ---
-        if (pmInMins !== null && pmOutMins === null) {
-          // Rule 1: Timed in PM but never timed out PM → absent afternoon (4 hours)
+        if (pmInMins === null || pmOutMins === null) {
+          // Missing check-in, check-out, or both -> absent afternoon (4 hours)
           dailyUndertime += 240;
         } else {
           // PM Tardiness: Late if after grace period
-          if (pmInMins !== null && pmInMins > sPmInEnd) {
+          if (pmInMins > sPmInEnd) {
             dailyUndertime += (pmInMins - sPmInEnd);
           }
           // PM Undertime: Leaving before scheduled out
-          if (pmOutMins !== null && pmOutMins < sPmOutStart) {
+          if (pmOutMins < sPmOutStart) {
             dailyUndertime += (sPmOutStart - pmOutMins);
           }
         }
@@ -1139,15 +1331,24 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
     
     if (!isNaN(logDate.getTime())) {
       const mins = logDate.getHours() * 60 + logDate.getMinutes();
-      const isCheckIn = log.log_type === 'Check-in';
-      const isMorning = mins < 780; // Before 1 PM
       
-      if (isMorning) {
-        if (isCheckIn) logsMap['AM In'] = log;
-        else logsMap['AM Out'] = log;
-      } else {
-        if (isCheckIn) logsMap['PM In'] = log;
-        else logsMap['PM Out'] = log;
+      // Classification logic matching displayTeacherLogs/dtrGenerator
+      if (mins < 660) { // Before 11:00 AM
+        if (log.log_type === 'Check-in') { logsMap['AM In'] = log; }
+      }
+      
+      if (mins >= 660 && mins < 750) { // 11:00 AM to 12:30 PM
+        if (log.log_type === 'Check-out') { logsMap['AM Out'] = log; }
+        else if (log.log_type === 'Check-in' && !logsMap['AM In']) { logsMap['AM In'] = log; }
+      }
+
+      if (mins >= 750 && mins < 900) { // 12:30 PM to 3:00 PM
+        if (log.log_type === 'Check-in') { logsMap['PM In'] = log; }
+        else if (log.log_type === 'Check-out' && !logsMap['AM Out']) { logsMap['AM Out'] = log; }
+      }
+
+      if (mins >= 900) { // After 3:00 PM
+        if (log.log_type === 'Check-out') { logsMap['PM Out'] = log; }
       }
     }
   });

@@ -108,31 +108,31 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
         dailyUndertime = 480; // 8 hours
       } else {
         // --- Morning ---
-        if (amInMins !== null && amOutMins === null) {
-          // Rule 1: Timed in AM but never timed out AM → absent morning (4 hours)
+        if (amInMins === null || amOutMins === null) {
+          // Missing check-in, check-out, or both -> absent morning (4 hours)
           dailyUndertime += 240;
         } else {
           // AM Tardiness: Late if after am_time_in_end (grace period)
-          if (amInMins !== null && amInMins > sAmInEnd) {
+          if (amInMins > sAmInEnd) {
             dailyUndertime += (amInMins - sAmInEnd);
           }
           // AM Undertime: Leaving before am_time_out_start
-          if (amOutMins !== null && amOutMins < sAmOutStart) {
+          if (amOutMins < sAmOutStart) {
             dailyUndertime += (sAmOutStart - amOutMins);
           }
         }
 
         // --- Afternoon ---
-        if (pmInMins !== null && pmOutMins === null) {
-          // Rule 1: Timed in PM but never timed out PM → absent afternoon (4 hours)
+        if (pmInMins === null || pmOutMins === null) {
+          // Missing check-in, check-out, or both -> absent afternoon (4 hours)
           dailyUndertime += 240;
         } else {
           // PM Tardiness: Late if after pm_time_in_end (grace period)
-          if (pmInMins !== null && pmInMins > sPmInEnd) {
+          if (pmInMins > sPmInEnd) {
             dailyUndertime += (pmInMins - sPmInEnd);
           }
           // PM Undertime: Leaving before pm_time_out_start
-          if (pmOutMins !== null && pmOutMins < sPmOutStart) {
+          if (pmOutMins < sPmOutStart) {
             dailyUndertime += (sPmOutStart - pmOutMins);
           }
         }

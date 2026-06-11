@@ -304,6 +304,111 @@ ipcMain.handle('save-time-schedule', async (event, schedule) => {
   }
 });
 
+ipcMain.handle('get-teacher-time-schedule', async (event, teacherId) => {
+  try {
+    const row = db.prepare('SELECT * FROM TeacherTimeSchedule WHERE teacher_id = ?').get(teacherId);
+    if (!row) return null;
+    return {
+      am_time_in: row.am_time_in.substring(0, 5),
+      am_time_in_end: row.am_time_in_end.substring(0, 5),
+      am_time_out_start: row.am_time_out_start.substring(0, 5),
+      am_time_out: row.am_time_out.substring(0, 5),
+      pm_time_in: row.pm_time_in.substring(0, 5),
+      pm_time_in_end: row.pm_time_in_end.substring(0, 5),
+      pm_time_out_start: row.pm_time_out_start ? row.pm_time_out_start.substring(0, 5) : '17:00',
+      pm_time_out: row.pm_time_out.substring(0, 5)
+    };
+  } catch (err) {
+    console.error('Error fetching teacher time schedule:', err);
+    return null;
+  }
+});
+
+ipcMain.handle('save-teacher-time-schedule', async (event, teacherId, schedule) => {
+  try {
+    const { am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out } = schedule;
+    db.prepare(`
+      INSERT INTO TeacherTimeSchedule (teacher_id, am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(teacher_id) DO UPDATE SET 
+        am_time_in = excluded.am_time_in,
+        am_time_in_end = excluded.am_time_in_end,
+        am_time_out_start = excluded.am_time_out_start,
+        am_time_out = excluded.am_time_out,
+        pm_time_in = excluded.pm_time_in,
+        pm_time_in_end = excluded.pm_time_in_end,
+        pm_time_out_start = excluded.pm_time_out_start,
+        pm_time_out = excluded.pm_time_out
+    `).run(teacherId, am_time_in, am_time_in_end, am_time_out_start, am_time_out, pm_time_in, pm_time_in_end, pm_time_out_start, pm_time_out);
+    
+    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(teacherId);
+    const name = teacher ? teacher.name : `ID: ${teacherId}`;
+    logActivity(currentSessionUser, 'Update Teacher Schedule', `Saved specific time schedule for "${name}". AM: ${am_time_in}-${am_time_in_end}, PM: ${pm_time_in}-${pm_time_in_end}`);
+    return { success: true };
+  } catch (err) {
+    console.error('Error saving teacher time schedule:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('delete-teacher-time-schedule', async (event, teacherId) => {
+  try {
+    db.prepare('DELETE FROM TeacherTimeSchedule WHERE teacher_id = ?').run(teacherId);
+    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(teacherId);
+    const name = teacher ? teacher.name : `ID: ${teacherId}`;
+    logActivity(currentSessionUser, 'Delete Teacher Schedule', `Removed specific time schedule for "${name}". Now falling back to global config.`);
+    return { success: true };
+  } catch (err) {
+    console.error('Error deleting teacher time schedule:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('get-effective-schedule', async (event, teacherId) => {
+  try {
+    const row = db.prepare('SELECT * FROM TeacherTimeSchedule WHERE teacher_id = ?').get(teacherId);
+    if (row) {
+      return {
+        am_time_in: row.am_time_in.substring(0, 5),
+        am_time_in_end: row.am_time_in_end.substring(0, 5),
+        am_time_out_start: row.am_time_out_start.substring(0, 5),
+        am_time_out: row.am_time_out.substring(0, 5),
+        pm_time_in: row.pm_time_in.substring(0, 5),
+        pm_time_in_end: row.pm_time_in_end.substring(0, 5),
+        pm_time_out_start: row.pm_time_out_start ? row.pm_time_out_start.substring(0, 5) : '17:00',
+        pm_time_out: row.pm_time_out.substring(0, 5),
+        is_custom: true
+      };
+    }
+    
+    // Fallback to global
+    const globalRow = db.prepare('SELECT * FROM TimeSchedule WHERE id = 1').get();
+    if (!globalRow) {
+      return {
+        am_time_in: '07:00', am_time_in_end: '08:00',
+        am_time_out_start: '12:00', am_time_out: '12:20',
+        pm_time_in: '12:35', pm_time_in_end: '13:00',
+        pm_time_out_start: '17:00', pm_time_out: '18:00',
+        is_custom: false
+      };
+    }
+    return {
+      am_time_in: globalRow.am_time_in.substring(0, 5),
+      am_time_in_end: globalRow.am_time_in_end.substring(0, 5),
+      am_time_out_start: globalRow.am_time_out_start.substring(0, 5),
+      am_time_out: globalRow.am_time_out.substring(0, 5),
+      pm_time_in: globalRow.pm_time_in.substring(0, 5),
+      pm_time_in_end: globalRow.pm_time_in_end.substring(0, 5),
+      pm_time_out_start: globalRow.pm_time_out_start ? globalRow.pm_time_out_start.substring(0, 5) : '17:00',
+      pm_time_out: globalRow.pm_time_out.substring(0, 5),
+      is_custom: false
+    };
+  } catch (err) {
+    console.error('Error fetching effective schedule:', err);
+    return { am_time_in: '07:00', am_time_in_end: '08:00', am_time_out_start: '12:00', am_time_out: '12:20', pm_time_in: '12:35', pm_time_in_end: '13:00', pm_time_out_start: '17:00', pm_time_out: '18:00', is_custom: false };
+  }
+});
+
 // ─── User Management ────────────────────────────────────────
 
 ipcMain.handle('get-users', async () => {
