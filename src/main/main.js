@@ -1,5 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const os = require('os');
 const bcrypt = require('bcryptjs');
 const { autoUpdater } = require('electron-updater');
 const { db } = require('../db/connection');
@@ -836,6 +839,79 @@ ipcMain.handle('get-activity-logs', async () => {
     console.error('Error fetching activity logs:', err);
     return [];
   }
+});
+
+// ─── License / Activation ────────────────────────────────────
+
+const LICENSE_SERVER = 'https://dtr-license-server.REPLACE.workers.dev';
+const LICENSE_FILE = path.join(app.getPath('userData'), 'license.json');
+
+function getMachineId() {
+  const hash = crypto.createHash('sha256');
+  hash.update(os.hostname());
+  hash.update(os.userInfo().username);
+  hash.update(os.platform());
+  hash.update(os.arch());
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.mac && iface.mac !== '00:00:00:00:00:00') {
+        hash.update(iface.mac);
+        break;
+      }
+    }
+    break;
+  }
+  return hash.digest('hex').substring(0, 16);
+}
+
+function getStoredLicense() {
+  try {
+    if (fs.existsSync(LICENSE_FILE)) {
+      return JSON.parse(fs.readFileSync(LICENSE_FILE, 'utf-8'));
+    }
+  } catch (_) {}
+  return null;
+}
+
+function saveLicense(data) {
+  fs.writeFileSync(LICENSE_FILE, JSON.stringify(data, null, 2));
+}
+
+ipcMain.handle('check-license', async () => {
+  const stored = getStoredLicense();
+  if (!stored || !stored.licenseKey || !stored.activatedAt) {
+    return { activated: false };
+  }
+  return { activated: true, licenseKey: stored.licenseKey, machineId: getMachineId() };
+});
+
+ipcMain.handle('activate-license', async (event, licenseKey) => {
+  try {
+    const machineId = getMachineId();
+    const response = await fetch(`${LICENSE_SERVER}/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: licenseKey.trim().toUpperCase(), machineId })
+    });
+    const result = await response.json();
+
+    if (result.valid) {
+      saveLicense({
+        licenseKey: licenseKey.trim().toUpperCase(),
+        machineId,
+        activatedAt: new Date().toISOString()
+      });
+    }
+
+    return result;
+  } catch (err) {
+    return { valid: false, message: 'Cannot reach activation server. Check your internet connection.' };
+  }
+});
+
+ipcMain.handle('get-machine-id', async () => {
+  return getMachineId();
 });
 
 // ─── Print DTR ──────────────────────────────────────────────

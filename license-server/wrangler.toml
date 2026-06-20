@@ -1,0 +1,7 @@
+name = "dtr-license-server"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+kv_namespaces = [
+  { binding = "LICENSE_KV", id = "REPLACE_ME" }
+]

@@ -10,8 +10,14 @@ let currentYear = null;
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   applyBranding();
-  setupLogin();
   setupThemeToggles();
+  checkLicense().then(activated => {
+    if (activated) {
+      setupLogin();
+    } else {
+      setupActivation();
+    }
+  });
 });
 
 // ─── THEME MANAGEMENT ───────────────────────────────────────
@@ -92,6 +98,56 @@ function applyBranding() {
     if (sidebarLogo) sidebarLogo.style.display = 'none';
     if (loginIconDefault) loginIconDefault.style.display = '';
   }
+}
+
+// ─── LICENSE ACTIVATION ─────────────────────────────────────
+
+async function checkLicense() {
+  try {
+    const res = await ipcRenderer.invoke('check-license');
+    return res.activated;
+  } catch (_) {
+    return false;
+  }
+}
+
+function setupActivation() {
+  document.getElementById('activation-overlay').style.display = 'flex';
+  document.getElementById('login-overlay').style.display = 'none';
+
+  const form = document.getElementById('activation-form');
+  const errEl = document.getElementById('activation-error');
+  const btn = document.getElementById('btn-activate');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const key = document.getElementById('activation-key').value.trim();
+    if (!key) {
+      errEl.textContent = 'Please enter a license key.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Activating...';
+    errEl.textContent = '';
+
+    try {
+      const res = await ipcRenderer.invoke('activate-license', key);
+      if (res.valid) {
+        document.getElementById('activation-overlay').style.display = 'none';
+        document.getElementById('login-overlay').style.display = '';
+        setupLogin();
+      } else {
+        errEl.textContent = res.message || 'Activation failed.';
+        btn.disabled = false;
+        btn.textContent = 'Activate';
+      }
+    } catch (err) {
+      errEl.textContent = 'Activation error: ' + err.message;
+      btn.disabled = false;
+      btn.textContent = 'Activate';
+    }
+  });
 }
 
 // ─── LOGIN ──────────────────────────────────────────────────
@@ -487,7 +543,8 @@ function getAboutView() {
       <div class="dashboard-header"><h1>About</h1><p>Biometric Daily Time Record System</p></div>
       <div class="card" style="margin-bottom:20px;">
         <h3>Biometric DTR System</h3>
-        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Version <span id="about-version">1.0.0</span></p>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:4px;">Version <span id="about-version">1.0.0</span></p>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">License: <span id="about-license" style="font-weight:600;color:var(--success);">Active</span></p>
         <p style="line-height:1.7;font-size:14px;max-width:600px;">
           This application is a Daily Time Record (DTR) system designed for school personnel 
           in the Philippines. It follows the Civil Service Commission (CSC) Form No. 48 format 
@@ -1599,6 +1656,17 @@ function setupAboutView() {
     appVersion = v;
     const el = document.getElementById('about-version');
     if (el) el.textContent = v;
+  });
+
+  ipcRenderer.invoke('check-license').then(res => {
+    const el = document.getElementById('about-license');
+    if (el && res.activated) {
+      el.textContent = '✓ Activated (' + res.licenseKey.substring(0, 8) + '...)';
+      el.style.color = 'var(--success)';
+    } else if (el) {
+      el.textContent = 'Not activated';
+      el.style.color = '#ef4444';
+    }
   });
 
   const btnCheck = document.getElementById('btn-about-check-updates');

@@ -8,6 +8,29 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!-- Activation Overlay (shown before login if not activated) -->
+  <div class="login-overlay" id="activation-overlay" style="display: none;">
+    <div class="login-card">
+      <div class="login-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h2 id="activation-title">Activate License</h2>
+      <p class="login-subtitle">Enter your license key to activate the application</p>
+      <form id="activation-form">
+        <div class="login-field">
+          <label for="activation-key">License Key</label>
+          <input type="text" id="activation-key" placeholder="DTR-XXXX-XXXX-XXXX" autocomplete="off" style="text-transform:uppercase;letter-spacing:1px;font-family:monospace;" required>
+        </div>
+        <p class="login-error" id="activation-error"></p>
+        <button type="submit" class="login-btn" id="btn-activate">Activate</button>
+      </form>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:16px;">Requires an internet connection for activation</p>
+    </div>
+  </div>
+
   <!-- Login Overlay -->
   <div class="login-overlay" id="login-overlay">
     <button class="login-theme-toggle" id="btn-login-theme-toggle" title="Toggle Theme">
