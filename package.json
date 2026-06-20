@@ -28,6 +28,12 @@
       "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
+    "publish": {
+      "provider": "github",
+      "owner": "jencendencia",
+      "repo": "dtr-app",
+      "releaseType": "release"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": true,
@@ -47,6 +53,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.0.0",
+    "electron-updater": "^6.8.9",
     "xlsx": "^0.18.5"
   }
 }

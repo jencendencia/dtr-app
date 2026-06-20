@@ -522,6 +522,25 @@ function getSettingsView() {
           <p class="status-msg" id="pw-status"></p>
         </div>
       </div>
+      <div class="card" style="margin-bottom:20px;">
+        <h3>Updates</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Check for new versions of the application.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button class="btn-primary" id="btn-check-updates">Check for Updates</button>
+          <button class="btn-success" id="btn-download-update" style="display:none;">Download Update</button>
+          <button class="btn-primary" id="btn-install-update" style="display:none;">Restart & Install</button>
+          <span id="update-status-text" style="font-size:13px;font-weight:500;color:var(--text-muted);"></span>
+        </div>
+        <div id="update-progress-container" style="display:none;margin-top:12px;width:100%;max-width:400px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;">
+            <span id="update-progress-label">Downloading...</span>
+            <span id="update-progress-percent">0%</span>
+          </div>
+          <div style="width:100%;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+            <div id="update-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width 0.3s;"></div>
+          </div>
+        </div>
+      </div>
       ${currentUser && currentUser.role === 'admin' ? `
       <div class="card">
         <h3>User Management</h3>
@@ -1526,7 +1545,11 @@ async function setupAdminView() {
   });
 }
 
+let appVersion = '1.0.0';
+
 function setupSettingsView() {
+  // Get app version from main process
+  ipcRenderer.invoke('get-app-version').then(v => { appVersion = v; });
   // School Branding
   const schoolNameInput = document.getElementById('school-name');
   const schoolLogoInput = document.getElementById('school-logo');
@@ -1595,7 +1618,64 @@ function setupSettingsView() {
     showMsg(pwStatus, res.success ? '✓ Password changed!' : '✗ ' + res.message, res.success ? '#10b981' : '#ef4444');
   });
 
-  // User management (admin only)
+  // ─── Update Management ──────────────────────────────────────
+  const btnCheck = document.getElementById('btn-check-updates');
+  const btnDownload = document.getElementById('btn-download-update');
+  const btnInstall = document.getElementById('btn-install-update');
+  const statusText = document.getElementById('update-status-text');
+  const progressContainer = document.getElementById('update-progress-container');
+  const progressBar = document.getElementById('update-progress-bar');
+  const progressPercent = document.getElementById('update-progress-percent');
+
+  ipcRenderer.on('update-status', (event, { status, data }) => {
+    if (status === 'checking') {
+      statusText.textContent = 'Checking for updates...';
+      btnCheck.disabled = true;
+    } else if (status === 'available') {
+      statusText.textContent = `Update v${data.version} is available (${data.releaseName || ''})`;
+      btnCheck.style.display = 'none';
+      btnDownload.style.display = '';
+      progressContainer.style.display = 'none';
+    } else if (status === 'not-available') {
+      statusText.textContent = `You're on the latest version (v${appVersion}).`;
+      btnCheck.disabled = false;
+    } else if (status === 'downloading') {
+      progressContainer.style.display = '';
+      const pct = Math.round(data.percent);
+      progressBar.style.width = pct + '%';
+      progressPercent.textContent = pct + '%';
+      statusText.textContent = 'Downloading update...';
+      btnDownload.disabled = true;
+    } else if (status === 'downloaded') {
+      statusText.textContent = 'Update downloaded. Restart to install.';
+      progressContainer.style.display = 'none';
+      btnDownload.style.display = 'none';
+      btnInstall.style.display = '';
+    } else if (status === 'error') {
+      statusText.textContent = 'Update error: ' + data;
+      statusText.style.color = '#ef4444';
+      btnCheck.disabled = false;
+      btnCheck.style.display = '';
+      btnDownload.style.display = 'none';
+      btnInstall.style.display = 'none';
+      progressContainer.style.display = 'none';
+    }
+  });
+
+  btnCheck.addEventListener('click', () => {
+    ipcRenderer.invoke('check-for-updates');
+  });
+
+  btnDownload.addEventListener('click', () => {
+    statusText.textContent = 'Starting download...';
+    ipcRenderer.invoke('download-update');
+  });
+
+  btnInstall.addEventListener('click', () => {
+    ipcRenderer.invoke('install-update');
+  });
+
+  // ─── User management (admin only) ────────────────────────────
   if (currentUser && currentUser.role === 'admin') {
     loadUsers();
     const userStatus = document.getElementById('user-mgmt-status');

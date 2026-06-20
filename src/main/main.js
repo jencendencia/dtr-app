@@ -1,8 +1,65 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { autoUpdater } = require('electron-updater');
 const { db } = require('../db/connection');
 const biometricService = require('./biometricsService');
+
+// ─── Auto Updater ────────────────────────────────────────────
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+function sendUpdateStatus(status, data) {
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) win.webContents.send('update-status', { status, data });
+}
+
+autoUpdater.on('checking-for-update', () => {
+  sendUpdateStatus('checking');
+});
+
+autoUpdater.on('update-available', (info) => {
+  sendUpdateStatus('available', info);
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  sendUpdateStatus('not-available', info);
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  sendUpdateStatus('downloading', progress);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdateStatus('downloaded', info);
+});
+
+autoUpdater.on('error', (err) => {
+  sendUpdateStatus('error', err.message);
+});
+
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    autoUpdater.checkForUpdates();
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  try {
+    autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('install-update', async () => {
+  autoUpdater.quitAndInstall();
+  return { success: true };
+});
 
 let currentSessionUser = 'System';
 
@@ -782,6 +839,10 @@ ipcMain.handle('get-activity-logs', async () => {
 });
 
 // ─── Print DTR ──────────────────────────────────────────────
+
+ipcMain.handle('get-app-version', async () => {
+  return app.getVersion();
+});
 
 ipcMain.handle('print-dtr', async (event) => {
   const win = BrowserWindow.getFocusedWindow();
