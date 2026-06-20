@@ -210,6 +210,7 @@ function initApp() {
       else if (viewId === 'admin') wrapper.innerHTML = getAdminView();
       else if (viewId === 'logs') wrapper.innerHTML = getLogsView();
       else if (viewId === 'settings') wrapper.innerHTML = getSettingsView();
+      else if (viewId === 'about') wrapper.innerHTML = getAboutView();
       mainContent.appendChild(wrapper);
       viewCache[viewId] = wrapper;
     }
@@ -235,6 +236,7 @@ function initApp() {
       else if (viewId === 'admin') setupAdminView();
       else if (viewId === 'logs') setupLogsView();
       else if (viewId === 'settings') setupSettingsView();
+      else if (viewId === 'about') setupAboutView();
     }
   }
 
@@ -474,6 +476,51 @@ function getAdminView() {
         <div style="margin-top:20px;display:flex;align-items:center;gap:12px;">
           <button class="btn-primary" id="btn-save-schedule">Save Schedule</button>
           <span class="status-msg" id="schedule-status"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function getAboutView() {
+  return `
+    <div class="view-section active" id="about-view">
+      <div class="dashboard-header"><h1>About</h1><p>Biometric Daily Time Record System</p></div>
+      <div class="card" style="margin-bottom:20px;">
+        <h3>Biometric DTR System</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Version <span id="about-version">1.0.0</span></p>
+        <p style="line-height:1.7;font-size:14px;max-width:600px;">
+          This application is a Daily Time Record (DTR) system designed for school personnel 
+          in the Philippines. It follows the Civil Service Commission (CSC) Form No. 48 format 
+          and supports biometric attendance data import from NGTeco devices.
+        </p>
+        <p style="line-height:1.7;font-size:14px;max-width:600px;margin-top:12px;">
+          <strong>Features:</strong><br>
+          • Biometric attendance import (NGTeco Cloud / USB devices)<br>
+          • Automated DTR generation in CSC Form No. 48 format<br>
+          • Teacher management with time schedule configuration<br>
+          • User authentication and role-based access<br>
+          • Automatic updates via GitHub Releases
+        </p>
+      </div>
+      <div class="card">
+        <h3>Check for Updates</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">
+          The app can auto-update when a new version is published on GitHub.
+        </p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button class="btn-primary" id="btn-about-check-updates">Check for Updates</button>
+          <button class="btn-success" id="btn-about-download-update" style="display:none;">Download Update</button>
+          <button class="btn-primary" id="btn-about-install-update" style="display:none;">Restart & Install</button>
+          <span id="about-update-status" style="font-size:13px;font-weight:500;color:var(--text-muted);"></span>
+        </div>
+        <div id="about-update-progress" style="display:none;margin-top:12px;width:100%;max-width:400px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;">
+            <span id="about-progress-label">Downloading...</span>
+            <span id="about-progress-percent">0%</span>
+          </div>
+          <div style="width:100%;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+            <div id="about-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:4px;transition:width 0.3s;"></div>
+          </div>
         </div>
       </div>
     </div>`;
@@ -1546,6 +1593,64 @@ async function setupAdminView() {
 }
 
 let appVersion = '1.0.0';
+
+function setupAboutView() {
+  ipcRenderer.invoke('get-app-version').then(v => {
+    appVersion = v;
+    const el = document.getElementById('about-version');
+    if (el) el.textContent = v;
+  });
+
+  const btnCheck = document.getElementById('btn-about-check-updates');
+  const btnDownload = document.getElementById('btn-about-download-update');
+  const btnInstall = document.getElementById('btn-about-install-update');
+  const statusText = document.getElementById('about-update-status');
+  const progressContainer = document.getElementById('about-update-progress');
+  const progressBar = document.getElementById('about-progress-bar');
+  const progressPercent = document.getElementById('about-progress-percent');
+
+  ipcRenderer.on('update-status', (event, { status, data }) => {
+    if (status === 'checking') {
+      statusText.textContent = 'Checking for updates...';
+      btnCheck.disabled = true;
+    } else if (status === 'available') {
+      statusText.textContent = `Update v${data.version} available`;
+      btnCheck.style.display = 'none';
+      btnDownload.style.display = '';
+      progressContainer.style.display = 'none';
+    } else if (status === 'not-available') {
+      statusText.textContent = `You're on the latest version (v${appVersion}).`;
+      btnCheck.disabled = false;
+    } else if (status === 'downloading') {
+      progressContainer.style.display = '';
+      const pct = Math.round(data.percent);
+      progressBar.style.width = pct + '%';
+      progressPercent.textContent = pct + '%';
+      statusText.textContent = 'Downloading...';
+      btnDownload.disabled = true;
+    } else if (status === 'downloaded') {
+      statusText.textContent = 'Update ready. Restart to install.';
+      progressContainer.style.display = 'none';
+      btnDownload.style.display = 'none';
+      btnInstall.style.display = '';
+    } else if (status === 'error') {
+      statusText.textContent = 'Error: ' + data;
+      statusText.style.color = '#ef4444';
+      btnCheck.disabled = false;
+      btnCheck.style.display = '';
+      btnDownload.style.display = 'none';
+      btnInstall.style.display = 'none';
+      progressContainer.style.display = 'none';
+    }
+  });
+
+  btnCheck.addEventListener('click', () => ipcRenderer.invoke('check-for-updates'));
+  btnDownload.addEventListener('click', () => {
+    statusText.textContent = 'Starting download...';
+    ipcRenderer.invoke('download-update');
+  });
+  btnInstall.addEventListener('click', () => ipcRenderer.invoke('install-update'));
+}
 
 function setupSettingsView() {
   // Get app version from main process
