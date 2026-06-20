@@ -843,7 +843,7 @@ ipcMain.handle('get-activity-logs', async () => {
 
 // ─── License / Activation ────────────────────────────────────
 
-const LICENSE_SERVER = 'https://dtr-license-server.REPLACE.workers.dev';
+const LICENSE_SERVER = 'https://dtr-license-server.jencendencia.workers.dev';
 const LICENSE_FILE = path.join(app.getPath('userData'), 'license.json');
 
 function getMachineId() {

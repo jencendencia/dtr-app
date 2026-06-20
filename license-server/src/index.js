@@ -1,4 +1,4 @@
-const ADMIN_SECRET = 'REPLACE_WITH_ADMIN_SECRET';
+const ADMIN_SECRET = 'chaisehomeencendencia';
 
 export default {
   async fetch(request, env) {

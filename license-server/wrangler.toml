@@ -3,5 +3,5 @@ main = "src/index.js"
 compatibility_date = "2025-01-01"
 
 kv_namespaces = [
-  { binding = "LICENSE_KV", id = "REPLACE_ME" }
+  { binding = "LICENSE_KV", id = "6b20f3b5c40440419d114dd27cc33e32" }
 ]
