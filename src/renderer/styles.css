@@ -691,6 +691,45 @@ nav {
   margin-top: 8px;
 }
 
+/* ─── Holidays Management ────────────────────────────────── */
+.holiday-add-form {
+  transition: all 0.2s ease;
+}
+
+.holiday-add-form .form-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  display: block;
+}
+
+[data-theme="dark"] .holiday-add-form {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.btn-delete-holiday {
+  transition: all 0.2s ease;
+}
+
+.btn-delete-holiday:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Holiday row styling in teacher logs and DTR */
+[data-theme="dark"] tr[style*="background:#fef3c7"] {
+  background: rgba(251, 191, 36, 0.15) !important;
+}
+
+[data-theme="dark"] tr[style*="background:#fce7f3"] {
+  background: rgba(236, 72, 153, 0.15) !important;
+}
+
+.holiday-day-label {
+  font-weight: 600;
+}
+
 /* ─── Dark Mode Overrides ────────────────────────────────── */
 [data-theme="dark"] .sidebar {
   background-color: #0f172a;

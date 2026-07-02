@@ -95,6 +95,18 @@ db.exec(`
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS Holidays (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL CHECK(type IN ('holiday', 'suspension')),
+      description TEXT DEFAULT '',
+      is_half_day INTEGER NOT NULL DEFAULT 0,
+      half_day_period TEXT CHECK(half_day_period IN ('AM', 'PM', NULL)),
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS TeacherTimeSchedule (
       teacher_id INTEGER PRIMARY KEY,
       am_time_in TEXT NOT NULL DEFAULT '07:00:00',

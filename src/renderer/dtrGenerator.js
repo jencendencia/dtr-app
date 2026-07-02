@@ -26,7 +26,7 @@ function getDayOfWeek(year, month, day) {
   return d.getDay(); // 0=Sun, 6=Sat
 }
 
-function generateDTRHtml(name, month, year, logs = [], schedule = null) {
+function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays = {}) {
   // Use provided schedule or defaults
   const sched = schedule || { 
     am_time_in: '07:00', 
@@ -60,6 +60,10 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
     logsByDay[d].push(l);
   });
 
+  // Build a date-keyed lookup for holidays
+  // Month param is name like "June", convert to numeric month
+  const monthNum = (monthIndex[month] !== undefined ? monthIndex[month] + 1 : 1).toString().padStart(2, '0');
+
   let rows = '';
   let totalUndertimeMins = 0;
 
@@ -69,6 +73,14 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
     const isSun = dow === 0;
     const isWeekend = isSat || isSun;
     const dayLabel = isSat ? 'Sat' : (isSun ? 'Sun' : '');
+
+    // Check if this day is a holiday/suspension
+    const dateStr = `${year}-${monthNum}-${String(i).padStart(2, '0')}`;
+    const holiday = holidays[dateStr];
+    const isHoliday = holiday && holiday.type === 'holiday';
+    const isSuspension = holiday && holiday.type === 'suspension';
+    const isHalfDay = holiday && holiday.is_half_day;
+    const halfDayPeriod = holiday ? holiday.half_day_period : null;
 
     const dayLogs = logsByDay[i] || [];
     let amIn = '', amOut = '', pmIn = '', pmOut = '';
@@ -100,9 +112,70 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
       }
     });
 
+    // ─── Holiday / Suspension Display Logic ───────────────────
+    let dayDisplay = `${i}`;
+    if (dayLabel) dayDisplay += ` - ${dayLabel}`;
+
+    let holidayStyle = '';
+    let holidayCellLabel = '';
+
+    if (isHoliday) {
+      holidayCellLabel = 'Holiday';
+      holidayStyle = 'background:#fef3c7;color:#92400e;font-style:italic;';
+    } else if (isSuspension) {
+      holidayCellLabel = 'Class Suspension';
+      holidayStyle = 'background:#fce7f3;color:#9d174d;font-style:italic;';
+    }
+
     // Calculate tardiness and undertime for this day
     let dailyUndertime = 0;
-    if (!isWeekend && (amIn || amOut || pmIn || pmOut)) {
+
+    // Full-day holiday/suspension: no undertime, show label in time cells
+    if (isHoliday || (isSuspension && !isHalfDay)) {
+      dailyUndertime = 0;
+      amIn = holidayCellLabel;
+      amOut = holidayCellLabel;
+      pmIn = holidayCellLabel;
+      pmOut = holidayCellLabel;
+      amInMins = null; amOutMins = null;
+      pmInMins = null; pmOutMins = null;
+    }
+    // Half-day suspension: only one half is affected
+    else if (isSuspension && isHalfDay) {
+      if (halfDayPeriod === 'AM') {
+        // AM is suspended — show label in AM cells
+        amIn = holidayCellLabel;
+        amOut = holidayCellLabel;
+        amInMins = null; amOutMins = null;
+      } else if (halfDayPeriod === 'PM') {
+        // PM is suspended — show label in PM cells
+        pmIn = holidayCellLabel;
+        pmOut = holidayCellLabel;
+        pmInMins = null; pmOutMins = null;
+      }
+      
+      // Now calculate undertime only for the active half
+      if (!isWeekend) {
+        if (halfDayPeriod !== 'AM') {
+          if (amInMins === null || amOutMins === null) {
+            dailyUndertime += 240;
+          } else {
+            if (amInMins > sAmInEnd) dailyUndertime += (amInMins - sAmInEnd);
+            if (amOutMins < sAmOutStart) dailyUndertime += (sAmOutStart - amOutMins);
+          }
+        }
+        if (halfDayPeriod !== 'PM') {
+          if (pmInMins === null || pmOutMins === null) {
+            dailyUndertime += 240;
+          } else {
+            if (pmInMins > sPmInEnd) dailyUndertime += (pmInMins - sPmInEnd);
+            if (pmOutMins < sPmOutStart) dailyUndertime += (sPmOutStart - pmOutMins);
+          }
+        }
+      }
+    }
+    // Normal day (not a holiday/suspension)
+    else if (!isWeekend && (amIn || amOut || pmIn || pmOut)) {
       // Rule 3: AM In exists, no AM Out, no PM In, but PM Out exists → absent whole day (8 hours)
       if (amInMins !== null && amOutMins === null && pmInMins === null && pmOutMins !== null) {
         dailyUndertime = 480; // 8 hours
@@ -146,10 +219,9 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null) {
       totalUndertimeMins += dailyUndertime;
     }
 
-    const weekendStyle = isWeekend ? 'background:#f9fafb;color:#9ca3af;font-style:italic;' : '';
-    const dayDisplay = dayLabel ? `${i} - ${dayLabel}` : `${i}`;
+    const specialStyle = holidayStyle || (isWeekend ? 'background:#f9fafb;color:#9ca3af;font-style:italic;' : '');
 
-    rows += `<tr style="${weekendStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
   }
 
   const totalH = Math.floor(totalUndertimeMins / 60);

@@ -501,7 +501,7 @@ function getSearchTeacherView() {
 function getAdminView() {
   return `
     <div class="view-section active" id="admin-view">
-      <div class="dashboard-header"><h1>Admin</h1><p>Manage time schedule and system settings</p></div>
+      <div class="dashboard-header"><h1>Admin</h1><p>Manage time schedule, holidays, and system settings</p></div>
       <div class="card">
         <h3>Time Schedule Configuration</h3>
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Set the official time-in and time-out windows. Teachers arriving after the grace period are marked late.</p>
@@ -532,6 +532,55 @@ function getAdminView() {
         <div style="margin-top:20px;display:flex;align-items:center;gap:12px;">
           <button class="btn-primary" id="btn-save-schedule">Save Schedule</button>
           <span class="status-msg" id="schedule-status"></span>
+        </div>
+      </div>
+
+      <!-- Holidays / Class Suspensions Management -->
+      <div class="card" style="margin-top:20px;">
+        <h3>📅 Holidays & Class Suspensions</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Mark dates as holidays or class suspensions. These will be reflected in DTR generation.</p>
+        
+        <div class="holiday-add-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:20px;padding:16px;background:var(--surface-alt);border-radius:8px;border:1px solid var(--border);">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="holiday-date" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="holiday-type" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+              <option value="holiday">Holiday</option>
+              <option value="suspension">Class Suspension</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Description (optional)</label>
+            <input type="text" id="holiday-description" placeholder="e.g. National Heroes Day" style="padding:8px;border-radius:6px;border:1px solid var(--border);width:200px;">
+          </div>
+          <div class="form-group">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
+              <input type="checkbox" id="holiday-half-day" style="cursor:pointer;width:16px;height:16px;">
+              <label for="holiday-half-day" style="font-weight:500;cursor:pointer;margin:0;">Half-day</label>
+            </div>
+            <div id="holiday-half-day-periods" style="display:none;gap:12px;">
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="half-day-period" value="AM" checked> AM
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                <input type="radio" name="half-day-period" value="PM"> PM
+              </label>
+            </div>
+          </div>
+          <button class="btn-primary" id="btn-add-holiday" style="padding:8px 20px;">Add</button>
+        </div>
+        
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
+          <label for="holiday-month-filter" style="font-weight:500;font-size:14px;">View month:</label>
+          <input type="month" id="holiday-month-filter" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+          <button class="btn-primary" id="btn-refresh-holidays" style="padding:6px 14px;font-size:12px;">Refresh</button>
+        </div>
+        
+        <div id="holidays-list-container">
+          <p style="color:var(--text-muted);font-size:13px;font-style:italic;">Loading holidays...</p>
         </div>
       </div>
     </div>`;
@@ -880,7 +929,9 @@ async function setupDtrView() {
     // Fetch fresh effective time schedule before generating DTR
     const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
     const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
-    const dtrHtml = generateDTRHtml(select.options[select.selectedIndex].text, monthNames[parseInt(month)], year, logs, freshSchedule);
+    // Fetch holidays for the month
+    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year);
+    const dtrHtml = generateDTRHtml(select.options[select.selectedIndex].text, monthNames[parseInt(month)], year, logs, freshSchedule, holidays);
     const cols = columnSelect.value;
     if (cols === '2') {
       container.innerHTML = `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
@@ -895,13 +946,15 @@ async function setupDtrView() {
     const [year, month] = monthVal.split('-');
     // Fetch only ACTIVE teachers before generating all DTRs
     const freshTeachers = await ipcRenderer.invoke('get-active-teachers');
+    // Fetch holidays once for all teachers (same month)
+    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year);
     const cols = columnSelect.value;
     let allHtml = '';
     for (const t of freshTeachers) {
       const logs = await ipcRenderer.invoke('get-attendance', t.id, parseInt(month), parseInt(year));
       // Fetch each teacher's individual effective time schedule
       const teacherSchedule = await ipcRenderer.invoke('get-effective-schedule', t.id);
-      const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, teacherSchedule);
+      const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, teacherSchedule, holidays);
       if (cols === '2') {
         allHtml += `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
       } else {
@@ -1078,11 +1131,24 @@ async function setupSearchTeacherView() {
     const [year, month] = monthVal.split('-');
     currentYear = parseInt(year);
     currentMonth = parseInt(month);
-    const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
-    displayTeacherLogs(logs, teacherId);
+    await loadTeacherLogs(parseInt(teacherId), month, year);
   });
 
   // Save specific schedule
+  // Get effective schedule including holiday info for this teacher
+  async function getEffectiveScheduleWithHolidays(teacherId, month, year) {
+    const schedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
+    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year);
+    return { schedule, holidays };
+  }
+
+  // Modify displayTeacherLogs to use this context
+  async function loadTeacherLogs(teacherId, month, year) {
+    const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), year);
+    const { schedule, holidays } = await getEffectiveScheduleWithHolidays(teacherId, month, year);
+    displayTeacherLogs(logs, teacherId, month, year, schedule, holidays);
+  }
+
   document.getElementById('btn-save-teacher-schedule').addEventListener('click', async () => {
     if (!currentSearchTeacherId) return;
 
@@ -1111,8 +1177,7 @@ async function setupSearchTeacherView() {
         // Refresh logs immediately with new schedule calculations
         const monthVal = document.getElementById('search-month-select').value;
         const [year, month] = monthVal.split('-');
-        const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
-        displayTeacherLogs(logs, currentSearchTeacherId);
+        await loadTeacherLogs(currentSearchTeacherId, month, year);
       } else {
         statusEl.textContent = 'Error: ' + res.message;
         statusEl.style.color = '#ef4444';
@@ -1127,8 +1192,7 @@ async function setupSearchTeacherView() {
         // Refresh logs immediately to reflect global schedule calculations
         const monthVal = document.getElementById('search-month-select').value;
         const [year, month] = monthVal.split('-');
-        const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
-        displayTeacherLogs(logs, currentSearchTeacherId);
+        await loadTeacherLogs(currentSearchTeacherId, month, year);
       } else {
         statusEl.textContent = 'Error: ' + res.message;
         statusEl.style.color = '#ef4444';
@@ -1159,7 +1223,7 @@ async function setupSearchTeacherView() {
     }
   });
 
-  // Refresh logs button — direct addEventListener, no clone-and-replace
+  // Refresh logs button
   document.getElementById('btn-refresh-logs').addEventListener('click', async () => {
     if (!currentSearchTeacherId) {
       showToast('Please select a teacher first');
@@ -1169,158 +1233,229 @@ async function setupSearchTeacherView() {
     const [year, month] = monthVal.split('-');
     currentYear = parseInt(year);
     currentMonth = parseInt(month);
-    const logs = await ipcRenderer.invoke('get-attendance', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
-    displayTeacherLogs(logs, currentSearchTeacherId);
+    await loadTeacherLogs(currentSearchTeacherId, month, year);
   });
+
 }
 
-function displayTeacherLogs(logs, teacherId) {
+function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays) {
   const logsContainer = document.getElementById('teacher-logs-container');
-  if (logs.length === 0) {
-    logsContainer.innerHTML = '<div style="padding:10px;color:#6b7280;">No logs found</div>';
+  if (!timeSchedule) {
+    // Fallback if called without schedule (during initial page render)
+    ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId)).then(sched => {
+      ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year).then(hols => {
+        displayTeacherLogs(logs, teacherId, month, year, sched, hols);
+      });
+    });
     return;
   }
   
-  // Load time schedule for calculation
-  ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId)).then(timeSchedule => {
-    // Group logs by day - parse day directly from string to avoid timezone issues
-    const logsByDay = {};
-    logs.forEach(l => {
-      // log_time is 'YYYY-MM-DD HH:MM:SS' string from DATE_FORMAT
-      const d = parseInt(l.log_time.substring(8, 10));
-      if (!logsByDay[d]) logsByDay[d] = [];
-      logsByDay[d].push(l);
+  const monthNum = parseInt(month).toString().padStart(2, '0');
+  
+  if (logs.length === 0) {
+    // Check if month has any holidays
+    const hasHolidays = holidays && Object.keys(holidays).length > 0;
+    if (!hasHolidays) {
+      logsContainer.innerHTML = '<div style="padding:10px;color:#6b7280;">No logs found</div>';
+      return;
+    }
+  }
+  
+  // Group logs by day
+  const logsByDay = {};
+  logs.forEach(l => {
+    const d = parseInt(l.log_time.substring(8, 10));
+    if (!logsByDay[d]) logsByDay[d] = [];
+    logsByDay[d].push(l);
+  });
+
+  const sAmOutStart = timeToMinutes(timeSchedule.am_time_out_start);
+  const sPmOutStart = timeToMinutes(timeSchedule.pm_time_out_start);
+  const sAmInEnd = timeToMinutes(timeSchedule.am_time_in_end);
+  const sPmInEnd = timeToMinutes(timeSchedule.pm_time_in_end);
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<thead><tr style="background:#f3f4f6;"><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Day</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">AM In</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">AM Out</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">PM In</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">PM Out</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Undertime</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Actions</th></tr></thead>';
+  html += '<tbody>';
+
+  // Process each day
+  for (let i = 1; i <= 31; i++) {
+    const dayLogs = logsByDay[i] || [];
+    
+    // Build date string for holiday lookup
+    const dateStr = `${year}-${monthNum}-${String(i).padStart(2, '0')}`;
+    const holiday = holidays ? holidays[dateStr] : null;
+    const isHoliday = holiday && holiday.type === 'holiday';
+    const isSuspension = holiday && holiday.type === 'suspension';
+    const isHalfDay = holiday && holiday.is_half_day;
+    const halfDayPeriod = holiday ? holiday.half_day_period : null;
+
+    // Skip days with no logs AND no holidays
+    if (dayLogs.length === 0 && !holiday) continue;
+
+    let amIn = '', amOut = '', pmIn = '', pmOut = '';
+    let amInMins = null, amOutMins = null, pmInMins = null, pmOutMins = null;
+
+    dayLogs.forEach(l => {
+      const timePart = l.log_time.substring(11);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      const mins = hours * 60 + minutes;
+      
+      if (mins < 660) {
+        if (l.log_type === 'Check-in') { amIn = formatTimeOnly(l.log_time); amInMins = mins; }
+      }
+      
+      if (mins >= 660 && mins < 750) {
+        if (l.log_type === 'Check-out') { amOut = formatTimeOnly(l.log_time); amOutMins = mins; }
+        else if (l.log_type === 'Check-in' && !amIn) { amIn = formatTimeOnly(l.log_time); amInMins = mins; }
+      }
+
+      if (mins >= 750 && mins < 900) {
+        if (l.log_type === 'Check-in') { pmIn = formatTimeOnly(l.log_time); pmInMins = mins; }
+        else if (l.log_type === 'Check-out' && !amOut) { amOut = formatTimeOnly(l.log_time); amOutMins = mins; }
+      }
+
+      if (mins >= 900) {
+        if (l.log_type === 'Check-out') { pmOut = formatTimeOnly(l.log_time); pmOutMins = mins; }
+      }
     });
 
-    const sAmOutStart = timeToMinutes(timeSchedule.am_time_out_start);
-    const sPmOutStart = timeToMinutes(timeSchedule.pm_time_out_start);
+    // Calculate undertime with holiday awareness
+    let utStr = '';
+    let dailyUndertime = 0;
 
-    const sAmInEnd = timeToMinutes(timeSchedule.am_time_in_end);
-    const sPmInEnd = timeToMinutes(timeSchedule.pm_time_in_end);
+    let dayDisplay = String(i);
+    let rowStyle = '';
+    let holidayCellLabel = '';
 
-    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
-    html += '<thead><tr style="background:#f3f4f6;"><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Day</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">AM In</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">AM Out</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">PM In</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">PM Out</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Undertime</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Actions</th></tr></thead>';
-    html += '<tbody>';
+    if (isHoliday) {
+      holidayCellLabel = 'Holiday';
+      rowStyle = 'background:#fef3c7;';
+      // Show label in all time cells, no undertime
+      amIn = holidayCellLabel; amOut = holidayCellLabel;
+      pmIn = holidayCellLabel; pmOut = holidayCellLabel;
+      amInMins = null; amOutMins = null;
+      pmInMins = null; pmOutMins = null;
+    } else if (isSuspension && !isHalfDay) {
+      holidayCellLabel = 'Class Suspension';
+      rowStyle = 'background:#fce7f3;';
+      amIn = holidayCellLabel; amOut = holidayCellLabel;
+      pmIn = holidayCellLabel; pmOut = holidayCellLabel;
+      amInMins = null; amOutMins = null;
+      pmInMins = null; pmOutMins = null;
+    } else if (isSuspension && isHalfDay) {
+      holidayCellLabel = 'Class Suspension';
+      rowStyle = 'background:#fce7f3;';
+      
+      if (halfDayPeriod === 'AM') {
+        amIn = holidayCellLabel; amOut = holidayCellLabel;
+        amInMins = null; amOutMins = null;
+      } else if (halfDayPeriod === 'PM') {
+        pmIn = holidayCellLabel; pmOut = holidayCellLabel;
+        pmInMins = null; pmOutMins = null;
+      }
 
-    // Process each day
-    for (let i = 1; i <= 31; i++) {
-      const dayLogs = logsByDay[i] || [];
-      if (dayLogs.length === 0) continue;
-
-      let amIn = '', amOut = '', pmIn = '', pmOut = '';
-      let amInMins = null, amOutMins = null, pmInMins = null, pmOutMins = null;
-
-      dayLogs.forEach(l => {
-        // log_time is always 'YYYY-MM-DD HH:MM:SS' from DATE_FORMAT
-        const timePart = l.log_time.substring(11); // 'HH:MM:SS'
-        const [hours, minutes] = timePart.split(':').map(Number);
-        const mins = hours * 60 + minutes;
-        
-        // Classification logic
-        if (mins < 660) { // Before 11:00 AM
-          if (l.log_type === 'Check-in') { amIn = formatTimeOnly(l.log_time); amInMins = mins; }
-        }
-        
-        if (mins >= 660 && mins < 750) { // 11:00 AM to 12:30 PM
-          if (l.log_type === 'Check-out') { amOut = formatTimeOnly(l.log_time); amOutMins = mins; }
-          else if (l.log_type === 'Check-in' && !amIn) { amIn = formatTimeOnly(l.log_time); amInMins = mins; }
-        }
-
-        if (mins >= 750 && mins < 900) { // 12:30 PM to 3:00 PM
-          if (l.log_type === 'Check-in') { pmIn = formatTimeOnly(l.log_time); pmInMins = mins; }
-          else if (l.log_type === 'Check-out' && !amOut) { amOut = formatTimeOnly(l.log_time); amOutMins = mins; }
-        }
-
-        if (mins >= 900) { // After 3:00 PM
-          if (l.log_type === 'Check-out') { pmOut = formatTimeOnly(l.log_time); pmOutMins = mins; }
-        }
-      });
-
-      // Calculate undertime (same logic as DTR generator)
-      let utStr = '';
-      let dailyUndertime = 0;
-
-      // Rule 3: AM In exists, no AM Out, no PM In, but PM Out exists → absent whole day (8 hours)
-      if (amInMins !== null && amOutMins === null && pmInMins === null && pmOutMins !== null) {
-        dailyUndertime = 480; // 8 hours
-      } else {
-        // --- Morning ---
+      // Calculate undertime only for active half
+      if (halfDayPeriod !== 'AM') {
         if (amInMins === null || amOutMins === null) {
-          // Missing check-in, check-out, or both -> absent morning (4 hours)
           dailyUndertime += 240;
         } else {
-          // AM Tardiness: Late if after grace period
-          if (amInMins > sAmInEnd) {
-            dailyUndertime += (amInMins - sAmInEnd);
-          }
-          // AM Undertime: Leaving before scheduled out
-          if (amOutMins < sAmOutStart) {
-            dailyUndertime += (sAmOutStart - amOutMins);
-          }
+          if (amInMins > sAmInEnd) dailyUndertime += (amInMins - sAmInEnd);
+          if (amOutMins < sAmOutStart) dailyUndertime += (sAmOutStart - amOutMins);
         }
-
-        // --- Afternoon ---
+      }
+      if (halfDayPeriod !== 'PM') {
         if (pmInMins === null || pmOutMins === null) {
-          // Missing check-in, check-out, or both -> absent afternoon (4 hours)
           dailyUndertime += 240;
         } else {
-          // PM Tardiness: Late if after grace period
-          if (pmInMins > sPmInEnd) {
-            dailyUndertime += (pmInMins - sPmInEnd);
-          }
-          // PM Undertime: Leaving before scheduled out
-          if (pmOutMins < sPmOutStart) {
-            dailyUndertime += (sPmOutStart - pmOutMins);
-          }
+          if (pmInMins > sPmInEnd) dailyUndertime += (pmInMins - sPmInEnd);
+          if (pmOutMins < sPmOutStart) dailyUndertime += (sPmOutStart - pmOutMins);
         }
       }
+    } else {
+      // Normal day evaluation
+      if (amInMins !== null && amOutMins === null && pmInMins === null && pmOutMins !== null) {
+        dailyUndertime = 480;
+      } else {
+        if (amInMins === null || amOutMins === null) {
+          dailyUndertime += 240;
+        } else {
+          if (amInMins > sAmInEnd) dailyUndertime += (amInMins - sAmInEnd);
+          if (amOutMins < sAmOutStart) dailyUndertime += (sAmOutStart - amOutMins);
+        }
 
-      if (dailyUndertime > 0) {
-        const utHours = Math.floor(dailyUndertime / 60);
-        const utMins = dailyUndertime % 60;
-        utStr = (utHours > 0 ? utHours + 'h ' : '') + (utMins > 0 ? utMins + 'm' : '');
+        if (pmInMins === null || pmOutMins === null) {
+          dailyUndertime += 240;
+        } else {
+          if (pmInMins > sPmInEnd) dailyUndertime += (pmInMins - sPmInEnd);
+          if (pmOutMins < sPmOutStart) dailyUndertime += (sPmOutStart - pmOutMins);
+        }
       }
-
-      html += `<tr style="border-bottom:1px solid #e5e7eb;">
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${i}</td>
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amIn}</td>
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amOut}</td>
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmIn}</td>
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmOut}</td>
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;font-weight:bold;color:#ef4444;">${utStr}</td>
-        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
-          <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
-          <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
-        </td>
-      </tr>`;
     }
 
-    html += '</tbody></table>';
-    logsContainer.innerHTML = html;
+    if (dailyUndertime > 0) {
+      const utHours = Math.floor(dailyUndertime / 60);
+      const utMins = dailyUndertime % 60;
+      utStr = (utHours > 0 ? utHours + 'h ' : '') + (utMins > 0 ? utMins + 'm' : '');
+    }
 
-    // Add handlers for edit and delete buttons
-    logsContainer.querySelectorAll('.edit-day-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const day = btn.getAttribute('data-day');
-        const dayLogs = logsByDay[day];
-        if (!dayLogs) return;
-        showEditDayModal(day, dayLogs, teacherId, logsByDay, currentMonth, currentYear);
-      });
+    html += `<tr style="border-bottom:1px solid #e5e7eb;${rowStyle}">
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${dayDisplay}</td>
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amIn}</td>
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amOut}</td>
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmIn}</td>
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmOut}</td>
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;font-weight:bold;color:#ef4444;">${utStr}</td>
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
+        <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
+        <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
+      </td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  logsContainer.innerHTML = html;
+
+  // Add handlers for edit and delete buttons
+  logsContainer.querySelectorAll('.edit-day-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const day = btn.getAttribute('data-day');
+      const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const holiday = holidays ? holidays[dateStr] : null;
+      if (holiday && holiday.type === 'holiday') {
+        showToast('Cannot edit logs on a holiday');
+        return;
+      }
+      if (holiday && holiday.type === 'suspension' && !holiday.is_half_day) {
+        showToast('Cannot edit logs on a full-day suspension');
+        return;
+      }
+      const dayLogs = logsByDay[day];
+      if (!dayLogs) return;
+      showEditDayModal(day, dayLogs, teacherId, logsByDay, currentMonth, currentYear);
     });
+  });
 
-    logsContainer.querySelectorAll('.delete-day-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const day = btn.getAttribute('data-day');
-        if (await showConfirm(`Are you sure you want to delete all logs for day ${day}?`)) {
-          const dayLogs = logsByDay[day];
-          for (const log of dayLogs) {
-            await ipcRenderer.invoke('delete-attendance-log', log.id);
-          }
-          showToast('Logs deleted successfully');
-          const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
-          displayTeacherLogs(freshLogs, teacherId);
+  logsContainer.querySelectorAll('.delete-day-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const day = btn.getAttribute('data-day');
+      const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const holiday = holidays ? holidays[dateStr] : null;
+      if (holiday && holiday.type === 'holiday') {
+        showToast('Cannot delete logs on a holiday');
+        return;
+      }
+      if (await showConfirm(`Are you sure you want to delete all logs for day ${day}?`)) {
+        const dayLogs = logsByDay[day];
+        for (const log of dayLogs) {
+          await ipcRenderer.invoke('delete-attendance-log', log.id);
         }
-      });
+        showToast('Logs deleted successfully');
+        const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
+        const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
+        const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear);
+        displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
+      }
     });
   });
 }
@@ -1583,7 +1718,9 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
           // Show non-blocking toast instead of alert (alert steals Electron focus)
           showToast('Time updated successfully');
           const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
-          displayTeacherLogs(freshLogs, teacherId);
+          const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
+          const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear);
+          displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
         } else {
           showToast('Error: ' + res.message);
           updateProcessing = false;
@@ -1610,6 +1747,7 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
 }
 
 async function setupAdminView() {
+  // ── Time Schedule ───────────────────────────────────────
   const sched = await ipcRenderer.invoke('get-time-schedule');
   document.getElementById('sched-am-in').value = sched.am_time_in;
   document.getElementById('sched-am-in-end').value = sched.am_time_in_end;
@@ -1647,6 +1785,129 @@ async function setupAdminView() {
     }
     setTimeout(() => statusEl.textContent = '', 3000);
   });
+
+  // ── Holidays / Class Suspensions ────────────────────────
+  const holidayDateInput = document.getElementById('holiday-date');
+  const holidayTypeSelect = document.getElementById('holiday-type');
+  const holidayDescInput = document.getElementById('holiday-description');
+  const holidayHalfDayCheck = document.getElementById('holiday-half-day');
+  const holidayHalfDayPeriods = document.getElementById('holiday-half-day-periods');
+  const holidayMonthFilter = document.getElementById('holiday-month-filter');
+  const btnAddHoliday = document.getElementById('btn-add-holiday');
+  const btnRefreshHolidays = document.getElementById('btn-refresh-holidays');
+  const holidaysListContainer = document.getElementById('holidays-list-container');
+
+  // Set default date to today
+  const today = new Date();
+  holidayDateInput.value = today.toISOString().split('T')[0];
+  holidayMonthFilter.value = today.toISOString().slice(0, 7);
+
+  // Toggle half-day period radio buttons
+  holidayHalfDayCheck.addEventListener('change', () => {
+    holidayHalfDayPeriods.style.display = holidayHalfDayCheck.checked ? 'flex' : 'none';
+  });
+
+  // Load holidays
+  async function loadHolidays() {
+    const filterVal = holidayMonthFilter.value;
+    let holidays;
+    if (filterVal) {
+      const [year, month] = filterVal.split('-');
+      holidays = await ipcRenderer.invoke('get-holidays', parseInt(month), year);
+    } else {
+      holidays = await ipcRenderer.invoke('get-holidays');
+    }
+
+    if (holidays.length === 0) {
+      holidaysListContainer.innerHTML = '<p style="color:var(--text-muted);font-size:13px;font-style:italic;">No holidays or class suspensions set for this month.</p>';
+      return;
+    }
+
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:var(--surface-alt);">
+        <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Date</th>
+        <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Type</th>
+        <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Period</th>
+        <th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Description</th>
+        <th style="padding:8px;text-align:center;border-bottom:1px solid var(--border);"></th>
+      </tr></thead><tbody>`;
+
+    holidays.forEach(h => {
+      const dateStr = new Date(h.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+      const typeLabel = h.type === 'holiday' ? '🎉 Holiday' : '⚠️ Suspension';
+      const periodLabel = h.is_half_day ? `Half-day (${h.half_day_period})` : 'Full day';
+      const typeColor = h.type === 'holiday' ? '#d97706' : '#db2777';
+      const typeBg = h.type === 'holiday' ? 'rgba(217,119,6,0.1)' : 'rgba(219,39,119,0.1)';
+      
+      html += `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px;font-weight:500;">${dateStr}</td>
+        <td style="padding:8px;"><span style="padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;color:${typeColor};background:${typeBg};">${typeLabel}</span></td>
+        <td style="padding:8px;color:var(--text-muted);">${periodLabel}</td>
+        <td style="padding:8px;color:var(--text-muted);">${h.description || '—'}</td>
+        <td style="padding:8px;text-align:center;">
+          <button class="btn-delete-holiday" data-id="${h.id}" style="padding:4px 10px;background:rgba(239,68,68,0.1);color:var(--danger);border:1px solid rgba(239,68,68,0.2);border-radius:4px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    });
+
+    html += '</tbody></table>';
+    holidaysListContainer.innerHTML = html;
+
+    // Attach delete handlers
+    holidaysListContainer.querySelectorAll('.btn-delete-holiday').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = parseInt(btn.getAttribute('data-id'));
+        const confirmed = await showConfirm('Delete this holiday/suspension?');
+        if (!confirmed) return;
+        const res = await ipcRenderer.invoke('delete-holiday', id);
+        if (res.success) {
+          showToast('Deleted successfully');
+          loadHolidays();
+        } else {
+          showToast('Error: ' + res.message);
+        }
+      });
+    });
+  }
+
+  // Add holiday
+  btnAddHoliday.addEventListener('click', async () => {
+    const date = holidayDateInput.value;
+    if (!date) {
+      showToast('Please select a date');
+      return;
+    }
+
+    const type = holidayTypeSelect.value;
+    const description = holidayDescInput.value.trim();
+    const is_half_day = holidayHalfDayCheck.checked;
+    const halfDayRadios = document.querySelectorAll('input[name="half-day-period"]');
+    let half_day_period = null;
+    if (is_half_day) {
+      for (const radio of halfDayRadios) {
+        if (radio.checked) {
+          half_day_period = radio.value;
+          break;
+        }
+      }
+    }
+
+    const res = await ipcRenderer.invoke('add-holiday', { date, type, description, is_half_day, half_day_period });
+    if (res.success) {
+      showToast(`${type === 'holiday' ? 'Holiday' : 'Suspension'} added for ${date}`);
+      holidayDescInput.value = '';
+      holidayHalfDayCheck.checked = false;
+      holidayHalfDayPeriods.style.display = 'none';
+      loadHolidays();
+    } else {
+      showToast('Error: ' + res.message);
+    }
+  });
+
+  btnRefreshHolidays.addEventListener('click', loadHolidays);
+
+  // Initial load
+  loadHolidays();
 }
 
 let appVersion = '1.0.0';

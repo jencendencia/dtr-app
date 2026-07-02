@@ -841,6 +841,82 @@ ipcMain.handle('get-activity-logs', async () => {
   }
 });
 
+// ─── Holidays / Class Suspensions ────────────────────────────
+
+ipcMain.handle('get-holidays', async (event, month, year) => {
+  try {
+    if (month && year) {
+      const monthStr = String(month).padStart(2, '0');
+      const startDate = `${year}-${monthStr}-01`;
+      // Calculate last day of month
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+      const endDate = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+      const rows = db.prepare('SELECT * FROM Holidays WHERE date >= ? AND date <= ? ORDER BY date ASC').all(startDate, endDate);
+      return rows;
+    }
+    const rows = db.prepare('SELECT * FROM Holidays ORDER BY date ASC').all();
+    return rows;
+  } catch (err) {
+    console.error('Error fetching holidays:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('add-holiday', async (event, holiday) => {
+  try {
+    const { date, type, description, is_half_day, half_day_period } = holiday;
+    db.prepare(`
+      INSERT INTO Holidays (date, type, description, is_half_day, half_day_period)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(date, type, description || '', is_half_day ? 1 : 0, is_half_day ? half_day_period : null);
+    logActivity(currentSessionUser, 'Add Holiday', `Added ${type} on ${date}${is_half_day ? ' (half-day ' + half_day_period + ')' : ''}${description ? ': ' + description : ''}`);
+    return { success: true };
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return { success: false, message: 'A holiday/suspension already exists for this date.' };
+    }
+    console.error('Error adding holiday:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('delete-holiday', async (event, id) => {
+  try {
+    const row = db.prepare('SELECT date, type FROM Holidays WHERE id = ?').get(id);
+    db.prepare('DELETE FROM Holidays WHERE id = ?').run(id);
+    if (row) {
+      logActivity(currentSessionUser, 'Delete Holiday', `Deleted ${row.type} on ${row.date}`);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Error deleting holiday:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('get-holidays-for-dtr', async (event, month, year) => {
+  try {
+    const monthStr = String(month).padStart(2, '0');
+    const startDate = `${year}-${monthStr}-01`;
+    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+    const endDate = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+    const rows = db.prepare('SELECT date, type, is_half_day, half_day_period FROM Holidays WHERE date >= ? AND date <= ? ORDER BY date ASC').all(startDate, endDate);
+    // Return as a map: { '2026-06-15': { type: 'holiday', is_half_day: 0, half_day_period: null }, ... }
+    const holidayMap = {};
+    rows.forEach(r => {
+      holidayMap[r.date] = {
+        type: r.type,
+        is_half_day: r.is_half_day,
+        half_day_period: r.half_day_period
+      };
+    });
+    return holidayMap;
+  } catch (err) {
+    console.error('Error fetching holidays for DTR:', err);
+    return {};
+  }
+});
+
 // ─── License / Activation ────────────────────────────────────
 
 const LICENSE_SERVER = 'https://dtr-license-server.jencendencia.workers.dev';
