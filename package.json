@@ -1,6 +1,6 @@
 {
   "name": "biometric-dtr-app",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Biometric Daily Time Record System for Schools",
   "main": "src/main/main.js",
   "author": "DTR System",

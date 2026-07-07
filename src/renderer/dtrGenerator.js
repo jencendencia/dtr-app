@@ -121,10 +121,10 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
 
     if (isHoliday) {
       holidayCellLabel = 'Holiday';
-      holidayStyle = 'background:#fef3c7;color:#92400e;font-style:italic;';
+      holidayStyle = 'font-style:italic;';
     } else if (isSuspension) {
       holidayCellLabel = 'Class Suspension';
-      holidayStyle = 'background:#fce7f3;color:#9d174d;font-style:italic;';
+      holidayStyle = 'font-style:italic;';
     }
 
     // Calculate tardiness and undertime for this day
@@ -219,7 +219,7 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
       totalUndertimeMins += dailyUndertime;
     }
 
-    const specialStyle = holidayStyle || (isWeekend ? 'background:#f9fafb;color:#9ca3af;font-style:italic;' : '');
+    const specialStyle = holidayStyle || (isWeekend ? 'font-style:italic;' : '');
 
     rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
   }
