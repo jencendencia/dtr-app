@@ -1274,8 +1274,13 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
   const sAmInEnd = timeToMinutes(timeSchedule.am_time_in_end);
   const sPmInEnd = timeToMinutes(timeSchedule.pm_time_in_end);
 
-  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
-  html += '<thead><tr style="background:#f3f4f6;"><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Day</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">AM In</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">AM Out</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">PM In</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">PM Out</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Undertime</th><th style="padding:8px;text-align:center;border:1px solid #e5e7eb;">Actions</th></tr></thead>';
+  let html = '<div id="bulk-delete-toolbar" style="display:none;margin-bottom:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;align-items:center;justify-content:space-between;">';
+  html += '<span id="bulk-delete-count" style="font-size:13px;color:#991b1b;font-weight:500;"></span>';
+  html += '<button id="btn-bulk-delete" style="padding:4px 12px;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;">Delete Selected</button>';
+  html += '</div>';
+
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<thead><tr style="background:#111827;"><th style="padding:8px;text-align:center;border:1px solid #374151;width:36px;color:white;"><input type="checkbox" id="select-all-days" style="cursor:pointer;"></th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">Day</th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">AM In</th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">AM Out</th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">PM In</th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">PM Out</th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">Undertime</th><th style="padding:8px;text-align:center;border:1px solid #374151;color:white;">Actions</th></tr></thead>';
   html += '<tbody>';
 
   // Process each day
@@ -1399,7 +1404,10 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
       utStr = (utHours > 0 ? utHours + 'h ' : '') + (utMins > 0 ? utMins + 'm' : '');
     }
 
+    const canSelect = !(isHoliday || (isSuspension && !isHalfDay));
+
     html += `<tr style="border-bottom:1px solid #e5e7eb;${rowStyle}">
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;"><input type="checkbox" class="day-checkbox" data-day="${i}" ${canSelect ? '' : 'disabled'} style="cursor:${canSelect ? 'pointer' : 'not-allowed'};"></td>
       <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${dayDisplay}</td>
       <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amIn}</td>
       <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amOut}</td>
@@ -1457,6 +1465,61 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
       }
     });
+  });
+
+  // Bulk delete: select all checkbox
+  const selectAllCb = logsContainer.querySelector('#select-all-days');
+  const toolbar = logsContainer.querySelector('#bulk-delete-toolbar');
+  const countSpan = logsContainer.querySelector('#bulk-delete-count');
+  const bulkDeleteBtn = logsContainer.querySelector('#btn-bulk-delete');
+  const dayCheckboxes = logsContainer.querySelectorAll('.day-checkbox');
+
+  function updateBulkToolbar() {
+    const checked = logsContainer.querySelectorAll('.day-checkbox:checked').length;
+    if (checked > 0) {
+      toolbar.style.display = 'flex';
+      countSpan.textContent = `${checked} day${checked > 1 ? 's' : ''} selected`;
+    } else {
+      toolbar.style.display = 'none';
+    }
+    // Sync select-all state
+    const total = logsContainer.querySelectorAll('.day-checkbox:not(:disabled)').length;
+    selectAllCb.checked = total > 0 && checked === total;
+    selectAllCb.indeterminate = checked > 0 && checked < total;
+  }
+
+  selectAllCb.addEventListener('change', () => {
+    dayCheckboxes.forEach(cb => { if (!cb.disabled) cb.checked = selectAllCb.checked; });
+    updateBulkToolbar();
+  });
+
+  dayCheckboxes.forEach(cb => {
+    cb.addEventListener('change', updateBulkToolbar);
+  });
+
+  // Bulk delete button
+  bulkDeleteBtn.addEventListener('click', async () => {
+    const selectedDays = [];
+    logsContainer.querySelectorAll('.day-checkbox:checked').forEach(cb => {
+      selectedDays.push(parseInt(cb.getAttribute('data-day')));
+    });
+    if (selectedDays.length === 0) return;
+
+    const dayWord = selectedDays.length > 1 ? 'days' : 'day';
+    if (await showConfirm(`Are you sure you want to delete all logs for ${selectedDays.length} selected ${dayWord}?`)) {
+      for (const day of selectedDays) {
+        const dayLogs = logsByDay[day];
+        if (!dayLogs) continue;
+        for (const log of dayLogs) {
+          await ipcRenderer.invoke('delete-attendance-log', log.id);
+        }
+      }
+      showToast('Logs deleted successfully');
+      const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
+      const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
+      const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear);
+      displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
+    }
   });
 }
 
