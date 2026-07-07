@@ -11,6 +11,9 @@ const biometricService = require('./biometricsService');
 // ─── Auto Updater ────────────────────────────────────────────
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.requestHeaders = {
+  Authorization: 'token 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'
+};
 
 function sendUpdateStatus(status, data) {
   const win = BrowserWindow.getFocusedWindow();
