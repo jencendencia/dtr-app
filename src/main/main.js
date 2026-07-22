@@ -10,6 +10,32 @@ const biometricService = require('./biometricsService');
 const zktecoService = require('./zktecoService');
 
 // ─── Auto Updater ────────────────────────────────────────────
+
+// For public repos, no token is needed.
+// If the repo is private, set GH_TOKEN via config file in userData:
+//   { "token": "ghp_your_token_here" }
+// File location: app.getPath('userData')/github_token.json
+
+function loadGithubToken() {
+  // Only load token from config file if it exists (for private repos)
+  // Public repos don't need authentication
+  try {
+    const tokenFile = path.join(app.getPath('userData'), 'github_token.json');
+    if (fs.existsSync(tokenFile)) {
+      const data = JSON.parse(fs.readFileSync(tokenFile, 'utf-8'));
+      if (data.token) {
+        process.env.GH_TOKEN = data.token;
+        console.log('[AutoUpdater] Loaded GitHub token from config');
+        return;
+      }
+    }
+  } catch (_) {}
+
+  // Public repo — clear any stale token to avoid 401 errors
+  delete process.env.GH_TOKEN;
+  console.log('[AutoUpdater] No token needed (public repo)');
+}
+
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
@@ -63,6 +89,50 @@ ipcMain.handle('download-update', async () => {
 ipcMain.handle('install-update', async () => {
   autoUpdater.quitAndInstall();
   return { success: true };
+});
+
+// ─── GitHub Token Management ────────────────────────────────
+
+// Lazy getter — app.getPath('userData') only works after app is ready
+function getGitHubTokenFile() {
+  return path.join(app.getPath('userData'), 'github_token.json');
+}
+
+ipcMain.handle('get-github-token', async () => {
+  try {
+    const file = getGitHubTokenFile();
+    if (fs.existsSync(file)) {
+      const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      return { configured: true, hasToken: !!data.token };
+    }
+  } catch (_) {}
+  return { configured: false, hasToken: false };
+});
+
+ipcMain.handle('set-github-token', async (event, token) => {
+  try {
+    const data = { token: token.trim(), updatedAt: new Date().toISOString() };
+    fs.writeFileSync(getGitHubTokenFile(), JSON.stringify(data, null, 2));
+    process.env.GH_TOKEN = token.trim();
+    console.log('[AutoUpdater] GitHub token saved to config');
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('clear-github-token', async () => {
+  try {
+    const file = getGitHubTokenFile();
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+    delete process.env.GH_TOKEN;
+    console.log('[AutoUpdater] GitHub token cleared');
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
 });
 
 let currentSessionUser = 'System';
@@ -1429,6 +1499,7 @@ ipcMain.handle('print-dtr', async (event) => {
 });
 
 app.whenReady().then(() => {
+  loadGithubToken();
   createWindow();
 
   app.on('activate', function () {
