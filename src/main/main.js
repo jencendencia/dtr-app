@@ -165,7 +165,7 @@ ipcMain.handle('update-teacher-status', async (event, teacherId, status) => {
 
 ipcMain.handle('add-teacher', async (event, teacher) => {
   try {
-    const { name, biometric_id, device_role } = teacher;
+    const { name, biometric_id, device_password } = teacher;
     if (!name || !name.trim()) {
       return { success: false, message: 'Teacher name is required.' };
     }
@@ -173,9 +173,9 @@ ipcMain.handle('add-teacher', async (event, teacher) => {
     if (!bioId || bioId <= 0) {
       return { success: false, message: 'Valid Biometric ID is required.' };
     }
-    const role = parseInt(device_role) || 0;
-    const result = db.prepare('INSERT INTO Teachers (name, biometric_id, device_role) VALUES (?, ?, ?)').run(name.trim(), bioId, role);
-    logActivity(currentSessionUser, 'Add Teacher', `Added teacher "${name.trim()}" (Biometric ID: ${bioId}, Role: ${role === 1 ? 'Admin' : 'User'})`);
+    const password = String(device_password || '').substring(0, 8);
+    const result = db.prepare('INSERT INTO Teachers (name, biometric_id, device_password) VALUES (?, ?, ?)').run(name.trim(), bioId, password);
+    logActivity(currentSessionUser, 'Add Teacher', `Added teacher "${name.trim()}" (Biometric ID: ${bioId})`);
     return { success: true, id: result.lastInsertRowid };
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -188,7 +188,7 @@ ipcMain.handle('add-teacher', async (event, teacher) => {
 
 ipcMain.handle('update-teacher', async (event, teacherId, updates) => {
   try {
-    const { name, biometric_id, device_role } = updates;
+    const { name, biometric_id, device_password } = updates;
     if (!name || !name.trim()) {
       return { success: false, message: 'Teacher name is required.' };
     }
@@ -196,7 +196,7 @@ ipcMain.handle('update-teacher', async (event, teacherId, updates) => {
     if (!bioId || bioId <= 0) {
       return { success: false, message: 'Valid Biometric ID is required.' };
     }
-    const role = parseInt(device_role) || 0;
+    const password = String(device_password || '').substring(0, 8);
 
     // Check if another teacher already has this biometric_id
     const existing = db.prepare('SELECT id, name FROM Teachers WHERE biometric_id = ? AND id != ?').get(bioId, teacherId);
@@ -204,13 +204,13 @@ ipcMain.handle('update-teacher', async (event, teacherId, updates) => {
       return { success: false, message: `Biometric ID ${bioId} is already used by "${existing.name}".` };
     }
 
-    const oldTeacher = db.prepare('SELECT name, biometric_id, device_role FROM Teachers WHERE id = ?').get(teacherId);
+    const oldTeacher = db.prepare('SELECT name, biometric_id FROM Teachers WHERE id = ?').get(teacherId);
     if (!oldTeacher) {
       return { success: false, message: 'Teacher not found.' };
     }
 
-    db.prepare('UPDATE Teachers SET name = ?, biometric_id = ?, device_role = ? WHERE id = ?').run(name.trim(), bioId, role, teacherId);
-    logActivity(currentSessionUser, 'Update Teacher', `Updated teacher "${oldTeacher.name}" → "${name.trim()}" (Bio: ${oldTeacher.biometric_id} → ${bioId}, Role: ${role === 1 ? 'Admin' : 'User'})`);
+    db.prepare('UPDATE Teachers SET name = ?, biometric_id = ?, device_password = ? WHERE id = ?').run(name.trim(), bioId, password, teacherId);
+    logActivity(currentSessionUser, 'Update Teacher', `Updated teacher "${oldTeacher.name}" → "${name.trim()}" (Bio: ${oldTeacher.biometric_id} → ${bioId})`);
     return { success: true };
   } catch (err) {
     console.error('Error updating teacher:', err);
@@ -240,11 +240,11 @@ ipcMain.handle('enroll-teacher-to-device', async (event, teacherId) => {
     if (!zktecoService.isConnected()) {
       return { success: false, message: 'Not connected to a device. Connect first.' };
     }
-    const teacher = db.prepare('SELECT id, name, biometric_id, device_role FROM Teachers WHERE id = ?').get(teacherId);
+    const teacher = db.prepare('SELECT id, name, biometric_id, device_password FROM Teachers WHERE id = ?').get(teacherId);
     if (!teacher) {
       return { success: false, message: 'Teacher not found in database.' };
     }
-    const result = await zktecoService.setUser(teacher.id, teacher.biometric_id, teacher.name, '', teacher.device_role || 0, 0);
+    const result = await zktecoService.setUser(teacher.id, teacher.biometric_id, teacher.name, teacher.device_password || '', 0, 0);
     if (result.success) {
       logActivity(currentSessionUser, 'Enroll Teacher to Device', `Enrolled "${teacher.name}" (Bio ID: ${teacher.biometric_id}) to device`);
     }
@@ -260,7 +260,7 @@ ipcMain.handle('enroll-all-teachers-to-device', async () => {
     if (!zktecoService.isConnected()) {
       return { success: false, message: 'Not connected to a device. Connect first.' };
     }
-    const teachers = db.prepare('SELECT id, name, biometric_id, device_role FROM Teachers WHERE status = ? ORDER BY name ASC').all('active');
+    const teachers = db.prepare('SELECT id, name, biometric_id, device_password FROM Teachers WHERE status = ? ORDER BY name ASC').all('active');
     if (teachers.length === 0) {
       return { success: true, message: 'No active teachers to enroll.', enrolled: 0, failed: 0 };
     }
@@ -270,7 +270,7 @@ ipcMain.handle('enroll-all-teachers-to-device', async () => {
     const errors = [];
 
     for (const t of teachers) {
-      const result = await zktecoService.setUser(t.id, t.biometric_id, t.name, '', t.device_role || 0, 0);
+      const result = await zktecoService.setUser(t.id, t.biometric_id, t.name, t.device_password || '', 0, 0);
       if (result.success) {
         enrolled++;
       } else {

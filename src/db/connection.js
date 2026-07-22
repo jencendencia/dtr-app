@@ -34,7 +34,7 @@ db.exec(`
     name TEXT NOT NULL,
     biometric_id INTEGER UNIQUE NOT NULL,
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
-    device_role INTEGER NOT NULL DEFAULT 0,
+    device_password TEXT NOT NULL DEFAULT '',
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
   )
 `);
@@ -50,12 +50,12 @@ try {
   // Column already exists or table not yet created — safe to ignore
 }
 
-// Migration: add device_role column to existing Teachers table if it doesn't exist
+// Migration: add device_password column to existing Teachers table if it doesn't exist
 try {
-  const deviceRoleCheck = db.prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('Teachers') WHERE name = 'device_role'").get();
-  if (deviceRoleCheck.cnt === 0) {
-    db.exec("ALTER TABLE Teachers ADD COLUMN device_role INTEGER NOT NULL DEFAULT 0");
-    console.log('Migration: added device_role column to Teachers table');
+  const devicePwCheck = db.prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('Teachers') WHERE name = 'device_password'").get();
+  if (devicePwCheck.cnt === 0) {
+    db.exec("ALTER TABLE Teachers ADD COLUMN device_password TEXT NOT NULL DEFAULT ''");
+    console.log('Migration: added device_password column to Teachers table');
   }
 } catch (_migrationErr) {
   // Column already exists or table not yet created — safe to ignore

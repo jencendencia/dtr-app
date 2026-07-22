@@ -624,11 +624,8 @@ function getTeachersView() {
             <input type="number" id="teacher-bio-id-input" placeholder="e.g. 1" min="1" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
           </div>
           <div class="form-group" style="min-width:120px;">
-            <label style="font-weight:500;font-size:13px;">Device Role</label>
-            <select id="teacher-role-input" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
-              <option value="0">User</option>
-              <option value="1">Admin</option>
-            </select>
+            <label style="font-weight:500;font-size:13px;">Device Password</label>
+            <input type="text" id="teacher-password-input" placeholder="Max 8 chars" maxlength="8" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
           </div>
           <button id="btn-add-teacher" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;height:36px;">Add Teacher</button>
         </div>
@@ -673,11 +670,8 @@ function getTeachersView() {
               <input type="number" id="edit-teacher-bio-id" min="1" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
             </div>
             <div class="form-group">
-              <label style="font-weight:500;font-size:13px;">Device Role</label>
-              <select id="edit-teacher-role" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
-                <option value="0">User</option>
-                <option value="1">Admin</option>
-              </select>
+              <label style="font-weight:500;font-size:13px;">Device Password</label>
+              <input type="text" id="edit-teacher-password" maxlength="8" placeholder="Max 8 chars" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
             </div>
             <span id="edit-teacher-status" style="font-size:13px;"></span>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -1563,7 +1557,6 @@ async function setupTeachersView() {
     html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Name</th>';
     html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Biometric ID</th>';
     html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Status</th>';
-    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Role</th>';
     html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Created</th>';
     html += '<th style="padding:8px;text-align:center;border-bottom:1px solid var(--border);">Actions</th>';
     html += '</tr></thead><tbody>';
@@ -1572,16 +1565,13 @@ async function setupTeachersView() {
       const isActive = (t.status || 'active') === 'active';
       const statusColor = isActive ? '#10b981' : '#9ca3af';
       const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString() : '—';
-      const roleLabel = t.device_role === 1 ? 'Admin' : 'User';
-      const roleColor = t.device_role === 1 ? '#8b5cf6' : '#6b7280';
       html += `<tr style="border-bottom:1px solid var(--border);">
         <td style="padding:8px;font-weight:500;">${t.name}</td>
         <td style="padding:8px;font-family:monospace;">${t.biometric_id}</td>
         <td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:white;background:${statusColor};">${isActive ? 'Active' : 'Inactive'}</span></td>
-        <td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:white;background:${roleColor};">${roleLabel}</span></td>
         <td style="padding:8px;color:var(--text-muted);font-size:12px;">${createdDate}</td>
         <td style="padding:8px;text-align:center;">
-          <button class="btn-edit-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-bio="${t.biometric_id}" data-teacher-role="${t.device_role || 0}" style="padding:4px 10px;background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.3);border-radius:4px;cursor:pointer;font-size:11px;">Edit</button>
+          <button class="btn-edit-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-bio="${t.biometric_id}" data-teacher-password="${t.device_password || ''}" style="padding:4px 10px;background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.3);border-radius:4px;cursor:pointer;font-size:11px;">Edit</button>
           <button class="btn-enroll-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" style="padding:4px 10px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;display:none;">Enroll</button>
           <button class="btn-toggle-teacher-status" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-status="${t.status || 'active'}" style="padding:4px 10px;background:${isActive ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)'};color:${isActive ? '#f59e0b' : '#10b981'};border:1px solid ${isActive ? 'rgba(245,158,11,0.3)' : 'rgba(16,185,129,0.3)'};border-radius:4px;cursor:pointer;font-size:11px;">${isActive ? 'Deactivate' : 'Activate'}</button>
           <button class="btn-delete-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" style="padding:4px 10px;background:rgba(239,68,68,0.1);color:var(--danger);border:1px solid rgba(239,68,68,0.2);border-radius:4px;cursor:pointer;font-size:11px;">Delete</button>
@@ -1657,11 +1647,11 @@ async function setupTeachersView() {
   document.getElementById('btn-add-teacher').addEventListener('click', async () => {
     const nameInput = document.getElementById('teacher-name-input');
     const bioIdInput = document.getElementById('teacher-bio-id-input');
-    const roleInput = document.getElementById('teacher-role-input');
+    const passwordInput = document.getElementById('teacher-password-input');
     const statusEl = document.getElementById('add-teacher-status');
     const name = nameInput.value.trim();
     const biometric_id = bioIdInput.value.trim();
-    const device_role = parseInt(roleInput.value) || 0;
+    const device_password = passwordInput.value;
 
     if (!name) {
       statusEl.textContent = 'Please enter a teacher name.';
@@ -1674,13 +1664,13 @@ async function setupTeachersView() {
       return;
     }
 
-    const result = await ipcRenderer.invoke('add-teacher', { name, biometric_id: parseInt(biometric_id), device_role });
+    const result = await ipcRenderer.invoke('add-teacher', { name, biometric_id: parseInt(biometric_id), device_password });
     if (result.success) {
       statusEl.textContent = `✓ "${name}" added successfully!`;
       statusEl.style.color = '#10b981';
       nameInput.value = '';
       bioIdInput.value = '';
-      roleInput.value = '0';
+      passwordInput.value = '';
       showToast(`"${name}" added to database`);
       loadTeachers();
     } else {
@@ -1738,11 +1728,11 @@ async function setupTeachersView() {
   // ── Edit Teacher Modal ──
   let editingTeacherId = null;
 
-  function openEditModal(teacherId, name, bioId, deviceRole) {
+  function openEditModal(teacherId, name, bioId, devicePassword) {
     editingTeacherId = teacherId;
     document.getElementById('edit-teacher-name').value = name;
     document.getElementById('edit-teacher-bio-id').value = bioId;
-    document.getElementById('edit-teacher-role').value = deviceRole || 0;
+    document.getElementById('edit-teacher-password').value = devicePassword || '';
     document.getElementById('edit-teacher-status').textContent = '';
     document.getElementById('edit-teacher-modal').style.display = 'flex';
   }
@@ -1760,15 +1750,15 @@ async function setupTeachersView() {
     const teacherId = parseInt(btn.getAttribute('data-teacher-id'));
     const teacherName = btn.getAttribute('data-teacher-name');
     const teacherBio = btn.getAttribute('data-teacher-bio');
-    const teacherRole = btn.getAttribute('data-teacher-role');
-    openEditModal(teacherId, teacherName, teacherBio, teacherRole);
+    const teacherPassword = btn.getAttribute('data-teacher-password');
+    openEditModal(teacherId, teacherName, teacherBio, teacherPassword);
   });
 
   document.getElementById('btn-save-edit-teacher').addEventListener('click', async () => {
     if (!editingTeacherId) return;
     const name = document.getElementById('edit-teacher-name').value.trim();
     const bioId = document.getElementById('edit-teacher-bio-id').value.trim();
-    const device_role = parseInt(document.getElementById('edit-teacher-role').value) || 0;
+    const device_password = document.getElementById('edit-teacher-password').value;
     const statusEl = document.getElementById('edit-teacher-status');
 
     if (!name) {
@@ -1782,7 +1772,7 @@ async function setupTeachersView() {
       return;
     }
 
-    const result = await ipcRenderer.invoke('update-teacher', editingTeacherId, { name, biometric_id: parseInt(bioId), device_role });
+    const result = await ipcRenderer.invoke('update-teacher', editingTeacherId, { name, biometric_id: parseInt(bioId), device_password });
     if (result.success) {
       closeEditModal();
       showToast('Teacher updated');
