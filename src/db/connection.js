@@ -34,6 +34,7 @@ db.exec(`
     name TEXT NOT NULL,
     biometric_id INTEGER UNIQUE NOT NULL,
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+    device_role INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
   )
 `);
@@ -44,6 +45,17 @@ try {
   if (colCheck.cnt === 0) {
     db.exec("ALTER TABLE Teachers ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive'))");
     console.log('Migration: added status column to Teachers table');
+  }
+} catch (_migrationErr) {
+  // Column already exists or table not yet created — safe to ignore
+}
+
+// Migration: add device_role column to existing Teachers table if it doesn't exist
+try {
+  const deviceRoleCheck = db.prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('Teachers') WHERE name = 'device_role'").get();
+  if (deviceRoleCheck.cnt === 0) {
+    db.exec("ALTER TABLE Teachers ADD COLUMN device_role INTEGER NOT NULL DEFAULT 0");
+    console.log('Migration: added device_role column to Teachers table');
   }
 } catch (_migrationErr) {
   // Column already exists or table not yet created — safe to ignore
@@ -102,6 +114,20 @@ db.exec(`
       description TEXT DEFAULT '',
       is_half_day INTEGER NOT NULL DEFAULT 0,
       half_day_period TEXT CHECK(half_day_period IN ('AM', 'PM', NULL)),
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS BiometricDevices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      serial_number TEXT UNIQUE,
+      ip_address TEXT NOT NULL,
+      port INTEGER NOT NULL DEFAULT 4370,
+      device_type TEXT NOT NULL DEFAULT 'zkteco' CHECK(device_type IN ('zkteco', 'ngteco')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+      last_sync TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
   `);

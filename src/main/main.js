@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const { autoUpdater } = require('electron-updater');
 const { db } = require('../db/connection');
 const biometricService = require('./biometricsService');
+const zktecoService = require('./zktecoService');
 
 // ─── Auto Updater ────────────────────────────────────────────
 autoUpdater.autoDownload = false;
@@ -156,6 +157,138 @@ ipcMain.handle('update-teacher-status', async (event, teacherId, status) => {
     return { success: true };
   } catch (err) {
     console.error('Error updating teacher status:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+// ─── Teacher Management (Add / Delete / Enroll to Device) ───
+
+ipcMain.handle('add-teacher', async (event, teacher) => {
+  try {
+    const { name, biometric_id, device_role } = teacher;
+    if (!name || !name.trim()) {
+      return { success: false, message: 'Teacher name is required.' };
+    }
+    const bioId = parseInt(biometric_id);
+    if (!bioId || bioId <= 0) {
+      return { success: false, message: 'Valid Biometric ID is required.' };
+    }
+    const role = parseInt(device_role) || 0;
+    const result = db.prepare('INSERT INTO Teachers (name, biometric_id, device_role) VALUES (?, ?, ?)').run(name.trim(), bioId, role);
+    logActivity(currentSessionUser, 'Add Teacher', `Added teacher "${name.trim()}" (Biometric ID: ${bioId}, Role: ${role === 1 ? 'Admin' : 'User'})`);
+    return { success: true, id: result.lastInsertRowid };
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return { success: false, message: 'A teacher with this Biometric ID already exists.' };
+    }
+    console.error('Error adding teacher:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('update-teacher', async (event, teacherId, updates) => {
+  try {
+    const { name, biometric_id, device_role } = updates;
+    if (!name || !name.trim()) {
+      return { success: false, message: 'Teacher name is required.' };
+    }
+    const bioId = parseInt(biometric_id);
+    if (!bioId || bioId <= 0) {
+      return { success: false, message: 'Valid Biometric ID is required.' };
+    }
+    const role = parseInt(device_role) || 0;
+
+    // Check if another teacher already has this biometric_id
+    const existing = db.prepare('SELECT id, name FROM Teachers WHERE biometric_id = ? AND id != ?').get(bioId, teacherId);
+    if (existing) {
+      return { success: false, message: `Biometric ID ${bioId} is already used by "${existing.name}".` };
+    }
+
+    const oldTeacher = db.prepare('SELECT name, biometric_id, device_role FROM Teachers WHERE id = ?').get(teacherId);
+    if (!oldTeacher) {
+      return { success: false, message: 'Teacher not found.' };
+    }
+
+    db.prepare('UPDATE Teachers SET name = ?, biometric_id = ?, device_role = ? WHERE id = ?').run(name.trim(), bioId, role, teacherId);
+    logActivity(currentSessionUser, 'Update Teacher', `Updated teacher "${oldTeacher.name}" → "${name.trim()}" (Bio: ${oldTeacher.biometric_id} → ${bioId}, Role: ${role === 1 ? 'Admin' : 'User'})`);
+    return { success: true };
+  } catch (err) {
+    console.error('Error updating teacher:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('delete-teacher', async (event, teacherId) => {
+  try {
+    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(teacherId);
+    if (!teacher) {
+      return { success: false, message: 'Teacher not found.' };
+    }
+    db.prepare('DELETE FROM AttendanceLogs WHERE teacher_id = ?').run(teacherId);
+    db.prepare('DELETE FROM TeacherTimeSchedule WHERE teacher_id = ?').run(teacherId);
+    db.prepare('DELETE FROM Teachers WHERE id = ?').run(teacherId);
+    logActivity(currentSessionUser, 'Delete Teacher', `Deleted teacher "${teacher.name}"`);
+    return { success: true };
+  } catch (err) {
+    console.error('Error deleting teacher:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('enroll-teacher-to-device', async (event, teacherId) => {
+  try {
+    if (!zktecoService.isConnected()) {
+      return { success: false, message: 'Not connected to a device. Connect first.' };
+    }
+    const teacher = db.prepare('SELECT id, name, biometric_id, device_role FROM Teachers WHERE id = ?').get(teacherId);
+    if (!teacher) {
+      return { success: false, message: 'Teacher not found in database.' };
+    }
+    const result = await zktecoService.setUser(teacher.id, teacher.biometric_id, teacher.name, '', teacher.device_role || 0, 0);
+    if (result.success) {
+      logActivity(currentSessionUser, 'Enroll Teacher to Device', `Enrolled "${teacher.name}" (Bio ID: ${teacher.biometric_id}) to device`);
+    }
+    return result;
+  } catch (err) {
+    console.error('Error enrolling teacher to device:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('enroll-all-teachers-to-device', async () => {
+  try {
+    if (!zktecoService.isConnected()) {
+      return { success: false, message: 'Not connected to a device. Connect first.' };
+    }
+    const teachers = db.prepare('SELECT id, name, biometric_id, device_role FROM Teachers WHERE status = ? ORDER BY name ASC').all('active');
+    if (teachers.length === 0) {
+      return { success: true, message: 'No active teachers to enroll.', enrolled: 0, failed: 0 };
+    }
+
+    let enrolled = 0;
+    let failed = 0;
+    const errors = [];
+
+    for (const t of teachers) {
+      const result = await zktecoService.setUser(t.id, t.biometric_id, t.name, '', t.device_role || 0, 0);
+      if (result.success) {
+        enrolled++;
+      } else {
+        failed++;
+        errors.push(`${t.name}: ${result.message}`);
+      }
+    }
+
+    logActivity(currentSessionUser, 'Enroll All Teachers to Device', `Enrolled ${enrolled}/${teachers.length} teacher(s) to device. ${failed} failed.`);
+    return {
+      success: true,
+      message: `Enrolled ${enrolled} teacher(s) to device. ${failed > 0 ? failed + ' failed.' : ''}`,
+      enrolled,
+      failed,
+      errors
+    };
+  } catch (err) {
+    console.error('Error enrolling all teachers:', err);
     return { success: false, message: err.message };
   }
 });
@@ -552,6 +685,292 @@ ipcMain.handle('select-import-file', async (event, customTitle) => {
   }
 
   return { success: true, filePath: result.filePaths[0] };
+});
+
+// ─── ZKTeco Device Management ───────────────────────────────
+
+ipcMain.handle('get-devices', async () => {
+  try {
+    const rows = db.prepare('SELECT * FROM BiometricDevices ORDER BY created_at DESC').all();
+    return rows;
+  } catch (err) {
+    console.error('Error fetching devices:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('add-device', async (event, device) => {
+  try {
+    const { name, serial_number, ip_address, port, device_type } = device;
+    const result = db.prepare(
+      'INSERT INTO BiometricDevices (name, serial_number, ip_address, port, device_type) VALUES (?, ?, ?, ?, ?)'
+    ).run(name, serial_number || null, ip_address, port || 4370, device_type || 'zkteco');
+    logActivity(currentSessionUser, 'Add Device', `Added device "${name}" (IP: ${ip_address}, Serial: ${serial_number || 'N/A'})`);
+    return { success: true, id: result.lastInsertRowid };
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return { success: false, message: 'A device with this serial number already exists.' };
+    }
+    console.error('Error adding device:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('update-device', async (event, deviceId, device) => {
+  try {
+    const { name, serial_number, ip_address, port, device_type, status } = device;
+    db.prepare(
+      'UPDATE BiometricDevices SET name = ?, serial_number = ?, ip_address = ?, port = ?, device_type = ?, status = ? WHERE id = ?'
+    ).run(name, serial_number || null, ip_address, port || 4370, device_type || 'zkteco', status || 'active', deviceId);
+    logActivity(currentSessionUser, 'Update Device', `Updated device ID ${deviceId} "${name}"`);
+    return { success: true };
+  } catch (err) {
+    console.error('Error updating device:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('delete-device', async (event, deviceId) => {
+  try {
+    const row = db.prepare('SELECT name FROM BiometricDevices WHERE id = ?').get(deviceId);
+    db.prepare('DELETE FROM BiometricDevices WHERE id = ?').run(deviceId);
+    if (row) {
+      logActivity(currentSessionUser, 'Delete Device', `Deleted device "${row.name}" (ID: ${deviceId})`);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Error deleting device:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('connect-device', async (event, ip, port) => {
+  try {
+    const result = await zktecoService.connect(ip, port);
+    if (result.success) {
+      logActivity(currentSessionUser, 'Connect Device', `Connected to device at ${ip}:${port}`);
+    }
+    return result;
+  } catch (err) {
+    console.error('Error connecting to device:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('disconnect-device', async () => {
+  try {
+    await zktecoService.disconnect();
+    logActivity(currentSessionUser, 'Disconnect Device', 'Disconnected from ZKTeco device');
+    return { success: true };
+  } catch (err) {
+    console.error('Error disconnecting:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('get-device-status', async () => {
+  return zktecoService.getStatus();
+});
+
+ipcMain.handle('get-device-users', async () => {
+  return zktecoService.getUsers();
+});
+
+ipcMain.handle('sync-device-attendance', async () => {
+  try {
+    // First, fetch user names from the device
+    const deviceUsersResult = await zktecoService.getUsers();
+    const deviceUserMap = {}; // userId → name
+    if (deviceUsersResult.success && deviceUsersResult.data) {
+      for (const u of deviceUsersResult.data) {
+        if (u.userId && u.name) {
+          deviceUserMap[String(u.userId)] = u.name;
+        }
+      }
+      console.log(`[Zkteco Sync] Loaded ${Object.keys(deviceUserMap).length} user(s) from device:`, deviceUserMap);
+    }
+
+    const result = await zktecoService.getAttendanceLogs();
+    if (!result.success) return result;
+
+    const records = result.data || [];
+    if (records.length === 0) {
+      return { success: true, message: 'No attendance records on device.', synced: 0 };
+    }
+
+    // Attach device user names to records
+    for (const record of records) {
+      if (!record.name && deviceUserMap[record.employeeId]) {
+        record.name = deviceUserMap[record.employeeId];
+      }
+    }
+
+    // Build lookup maps from database
+    const teachers = db.prepare('SELECT id, name, biometric_id FROM Teachers').all();
+    const biometricMap = {};
+    const nameMap = {};
+    const nameList = [];
+    teachers.forEach(t => {
+      biometricMap[String(t.biometric_id)] = t.id;
+      const normalized = normalizeName(t.name);
+      nameMap[normalized] = t.id;
+      nameList.push({ name: t.name, normalized, id: t.id });
+    });
+
+    let insertedCount = 0;
+    let skippedCount = 0;
+    let autoCreatedTeachers = new Set();
+    const autoCreatedMap = {};
+    const maxBioRow = db.prepare('SELECT COALESCE(MAX(biometric_id), 0) as maxId FROM Teachers').get();
+    let nextBiometricId = (maxBioRow?.maxId || 0) + 1;
+
+    const insertTeacherStmt = db.prepare('INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)');
+    const checkExistingStmt = db.prepare('SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?');
+    const insertLogStmt = db.prepare('INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)');
+
+    const importTransaction = db.transaction(() => {
+      for (const record of records) {
+        console.log(`[Zkteco Sync] Processing record: employeeId="${record.employeeId}", logTime="${record.logTime}", logType="${record.logType}"`);
+
+        let teacherId = biometricMap[record.employeeId];
+        if (!teacherId && record.name) {
+          teacherId = fuzzyMatchTeacher(record.name, nameMap, nameList);
+        }
+
+        // Auto-create teacher if not found
+        if (!teacherId && record.employeeId) {
+          // Try to parse employeeId as a number for biometric_id
+          const bioId = parseInt(record.employeeId);
+          const cleanName = record.name || `Employee ${record.employeeId}`;
+
+          if (!isNaN(bioId) && bioId > 0) {
+            // Try the parsed ID first
+            try {
+              const insertResult = insertTeacherStmt.run(cleanName, bioId);
+              teacherId = insertResult.lastInsertRowid;
+              autoCreatedMap[record.employeeId] = teacherId;
+              autoCreatedTeachers.add(cleanName);
+              biometricMap[String(bioId)] = teacherId;
+              biometricMap[record.employeeId] = teacherId;
+              console.log(`[Zkteco Sync] Auto-created teacher: "${cleanName}" (Biometric: ${bioId})`);
+            } catch (createErr) {
+              // UNIQUE constraint — biometric_id already exists, try next available ID
+              if (createErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+                console.log(`[Zkteco Sync] Biometric ID ${bioId} already exists, trying next available ID`);
+                let nextId = nextBiometricId;
+                while (true) {
+                  try {
+                    const insertResult = insertTeacherStmt.run(cleanName, nextId);
+                    teacherId = insertResult.lastInsertRowid;
+                    autoCreatedMap[record.employeeId] = teacherId;
+                    autoCreatedTeachers.add(cleanName);
+                    biometricMap[String(nextId)] = teacherId;
+                    biometricMap[record.employeeId] = teacherId;
+                    nextBiometricId = nextId + 1;
+                    console.log(`[Zkteco Sync] Auto-created teacher: "${cleanName}" (Biometric: ${nextId})`);
+                    break;
+                  } catch (retryErr) {
+                    if (retryErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+                      nextId++;
+                      if (nextId > 999999) {
+                        console.error(`[Zkteco Sync] No available biometric ID for "${cleanName}"`);
+                        break;
+                      }
+                      continue;
+                    }
+                    console.error(`[Zkteco Sync] Failed to auto-create teacher "${cleanName}":`, retryErr.message);
+                    break;
+                  }
+                }
+              } else {
+                console.error(`[Zkteco Sync] Failed to auto-create teacher "${cleanName}":`, createErr.message);
+              }
+            }
+          } else {
+            // employeeId is not a valid number — use next available biometric_id
+            console.log(`[Zkteco Sync] employeeId "${record.employeeId}" is not a valid number, using next available ID`);
+            try {
+              const insertResult = insertTeacherStmt.run(cleanName, nextBiometricId);
+              teacherId = insertResult.lastInsertRowid;
+              autoCreatedMap[record.employeeId] = teacherId;
+              autoCreatedTeachers.add(cleanName);
+              biometricMap[String(nextBiometricId)] = teacherId;
+              biometricMap[record.employeeId] = teacherId;
+              console.log(`[Zkteco Sync] Auto-created teacher: "${cleanName}" (Biometric: ${nextBiometricId})`);
+              nextBiometricId++;
+            } catch (createErr) {
+              console.error(`[Zkteco Sync] Failed to auto-create teacher "${cleanName}":`, createErr.message);
+            }
+          }
+        }
+
+        if (!teacherId) {
+          console.log(`[Zkteco Sync] No teacher match for employeeId="${record.employeeId}", skipping`);
+          skippedCount++;
+          continue;
+        }
+
+        const logTime = record.logTime;
+        if (!logTime) {
+          skippedCount++;
+          continue;
+        }
+
+        const existing = checkExistingStmt.get(teacherId, logTime);
+        if (existing) {
+          skippedCount++;
+          continue;
+        }
+
+        insertLogStmt.run(teacherId, logTime, record.logType);
+        insertedCount++;
+      }
+    });
+
+    importTransaction();
+
+    // Update last_sync for all ZKTeco devices
+    db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type = 'zkteco'").run();
+
+    const autoCreatedList = [...autoCreatedTeachers];
+    let summary = `Synced ${insertedCount} new record(s) from device. Skipped ${skippedCount} duplicate(s).`;
+    if (autoCreatedList.length > 0) {
+      summary += ` Auto-created ${autoCreatedList.length} teacher(s): ${autoCreatedList.join(', ')}.`;
+    }
+    console.log('[Zkteco Sync]', summary);
+    logActivity(currentSessionUser, 'Sync Device', summary);
+    return { success: true, message: summary, synced: insertedCount, skipped: skippedCount, autoCreated: autoCreatedList.length, autoCreatedNames: autoCreatedList };
+  } catch (err) {
+    console.error('[Zkteco Sync] Error:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+// ─── Clear Device Sync Data ─────────────────────────────────
+ipcMain.handle('clear-device-sync-data', async () => {
+  try {
+    // Get all teachers and their attendance log counts
+    const allTeachers = db.prepare("SELECT id, name, biometric_id FROM Teachers").all();
+    
+    if (allTeachers.length === 0) {
+      return { success: true, message: 'No teachers found to clear.', cleared: 0 };
+    }
+
+    const teacherIds = allTeachers.map(t => t.id);
+    const placeholders = teacherIds.map(() => '?').join(',');
+    
+    // Delete all attendance logs
+    const logResult = db.prepare(`DELETE FROM AttendanceLogs WHERE teacher_id IN (${placeholders})`).run(...teacherIds);
+    
+    // Delete all teachers
+    db.prepare(`DELETE FROM Teachers WHERE id IN (${placeholders})`).run(...teacherIds);
+    
+    logActivity(currentSessionUser, 'Clear Device Data', `Cleared ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s)`);
+    return { success: true, message: `Cleared ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s). You can now re-sync.`, cleared: allTeachers.length };
+  } catch (err) {
+    console.error('Error clearing device sync data:', err);
+    return { success: false, message: err.message };
+  }
 });
 
 ipcMain.handle('preview-import-file', async (event, filePath) => {

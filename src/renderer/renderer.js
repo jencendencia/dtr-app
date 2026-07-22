@@ -178,9 +178,11 @@ function setupLogin() {
         if (currentUser.role === 'admin') {
           document.getElementById('nav-admin').style.display = '';
           document.getElementById('nav-logs').style.display = '';
+          document.getElementById('nav-teachers').style.display = '';
         } else {
           document.getElementById('nav-admin').style.display = 'none';
           document.getElementById('nav-logs').style.display = 'none';
+          document.getElementById('nav-teachers').style.display = 'none';
         }
         try {
           initApp();
@@ -249,7 +251,7 @@ function initApp() {
 
   function showView(viewId) {
     // Restrict admin-only views
-    if ((viewId === 'admin' || viewId === 'logs') && (!currentUser || currentUser.role !== 'admin')) {
+    if ((viewId === 'admin' || viewId === 'logs' || viewId === 'teachers') && (!currentUser || currentUser.role !== 'admin')) {
       viewId = 'dashboard';
     }
 
@@ -261,6 +263,8 @@ function initApp() {
       const wrapper = document.createElement('div');
       wrapper.setAttribute('data-view', viewId);
       if (viewId === 'dashboard') wrapper.innerHTML = getDashboardView();
+      else if (viewId === 'devices') wrapper.innerHTML = getDevicesView();
+      else if (viewId === 'teachers') wrapper.innerHTML = getTeachersView();
       else if (viewId === 'dtr') wrapper.innerHTML = getDtrView();
       else if (viewId === 'search-teacher') wrapper.innerHTML = getSearchTeacherView();
       else if (viewId === 'admin') wrapper.innerHTML = getAdminView();
@@ -287,6 +291,8 @@ function initApp() {
     if (!viewSetupDone[viewId]) {
       viewSetupDone[viewId] = true;
       if (viewId === 'dashboard') setupDashboardView();
+      else if (viewId === 'devices') setupDevicesView();
+      else if (viewId === 'teachers') setupTeachersView();
       else if (viewId === 'dtr') setupDtrView();
       else if (viewId === 'search-teacher') setupSearchTeacherView();
       else if (viewId === 'admin') setupAdminView();
@@ -318,17 +324,22 @@ function getDashboardView() {
     <div class="view-section active" id="dashboard-view">
       <div class="dashboard-header"><h1>Dashboard</h1><p>Welcome to the Biometric DTR System</p></div>
       <div class="card" style="margin-bottom:20px;">
-        <h3>📡 Import Attendance Data</h3>
+        <h3>Import Attendance Data</h3>
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Choose your data source and follow the steps to import attendance records.</p>
         <div id="import-source-tabs" style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
-          <button class="import-source-tab active" data-source="cloud" id="tab-cloud">
-            <span style="font-size:18px;">☁️</span> NGTeco Office (Cloud)
+          <button class="import-source-tab active" data-source="ngteco-cloud" id="tab-ngteco-cloud">
+            <span style="font-size:18px;">☁️</span> NGTeco Cloud
           </button>
-          <button class="import-source-tab" data-source="usb" id="tab-usb">
-            <span style="font-size:18px;">🔌</span> USB Device
+          <button class="import-source-tab" data-source="ngteco-usb" id="tab-ngteco-usb">
+            <span style="font-size:18px;">🔌</span> NGTeco USB
+          </button>
+          <button class="import-source-tab" data-source="zkteco-usb" id="tab-zkteco-usb">
+            <span style="font-size:18px;">🔌</span> ZKTeco USB
           </button>
         </div>
-        <div id="source-cloud-panel">
+
+        <!-- NGTeco Cloud Panel -->
+        <div id="source-ngteco-cloud-panel">
           <div class="step-panel-row cloud-step1">
             <span style="font-size:22px;">☁️</span>
             <div style="flex:1;">
@@ -346,11 +357,13 @@ function getDashboardView() {
             <button id="btn-import-cloud" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
           </div>
         </div>
-        <div id="source-usb-panel" style="display:none;">
+
+        <!-- NGTeco USB Panel -->
+        <div id="source-ngteco-usb-panel" style="display:none;">
           <div class="step-panel-row usb-step1">
             <span style="font-size:22px;">🔌</span>
             <div style="flex:1;">
-              <p class="step-title">Step 1: Export from Device via USB</p>
+              <p class="step-title">Step 1: Export from NGTeco Device via USB</p>
               <p class="step-desc">Insert USB → Menu → Data Mgmt → USB Export → Download Attendance Report</p>
             </div>
           </div>
@@ -367,18 +380,44 @@ function getDashboardView() {
               <p class="step-title">Step 3: Import into DTR System</p>
               <p class="step-desc">Select the CSV or DAT file from the USB drive to import attendance records</p>
             </div>
-            <button id="btn-import-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
+            <button id="btn-import-ngteco-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
+          </div>
+        </div>
+
+        <!-- ZKTeco USB Panel -->
+        <div id="source-zkteco-usb-panel" style="display:none;">
+          <div class="step-panel-row">
+            <span style="font-size:22px;">🔌</span>
+            <div style="flex:1;">
+              <p class="step-title">Step 1: Export from ZKTeco Device via USB</p>
+              <p class="step-desc">Insert USB → Menu → Data Mgmt → USB Download → Export AttLog as .dat or .csv</p>
+            </div>
+          </div>
+          <div class="step-panel-row">
+            <span style="font-size:22px;">💾</span>
+            <div style="flex:1;">
+              <p class="step-title">Step 2: Plug USB into Computer</p>
+              <p class="step-desc">Open the USB drive and locate the attendance file (e.g. attlog.dat or .csv file)</p>
+            </div>
+          </div>
+          <div class="step-panel-row">
+            <span style="font-size:22px;">📥</span>
+            <div style="flex:1;">
+              <p class="step-title">Step 3: Import into DTR System</p>
+              <p class="step-desc">Select the file from the USB drive to import attendance records</p>
+            </div>
+            <button id="btn-import-zkteco-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
           </div>
         </div>
       </div>
       <div id="import-preview-card" class="card" style="display:none;margin-bottom:20px;">
-        <h3>📋 File Preview</h3>
+        <h3>File Preview</h3>
         <p id="import-file-name" style="color:var(--text-muted);font-size:13px;margin-bottom:4px;"></p>
         <p id="import-source-label" style="color:#6366f1;font-size:12px;font-weight:600;margin-bottom:8px;"></p>
         <div id="import-preview-table" class="preview-table-container" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;"></div>
         <div id="import-mapping-info" class="mapping-info-panel"></div>
         <div style="display:flex;gap:10px;align-items:center;">
-          <button id="btn-confirm-import" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✓ Import to Database</button>
+          <button id="btn-confirm-import" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Import to Database</button>
           <button id="btn-cancel-import" style="padding:8px 16px;background:#9ca3af;color:white;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
         </div>
       </div>
@@ -386,6 +425,267 @@ function getDashboardView() {
         <h3 id="import-result-title">Import Result</h3>
         <p id="import-result-message" style="font-size:14px;"></p>
         <div id="import-result-details" style="font-size:12px;margin-top:8px;"></div>
+      </div>
+    </div>`;
+}
+
+function getDevicesView() {
+  return `
+    <div class="view-section active" id="devices-view">
+      <div class="dashboard-header"><h1>Biometric Devices</h1><p>Manage ZKTeco and other biometric device connections</p></div>
+
+      <!-- How to Setup Guide -->
+      <div class="card" style="margin-bottom:20px;border-left:4px solid #3b82f6;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <h3 style="margin:0;">How to Connect Your ZKTeco Device</h3>
+          <button id="btn-toggle-setup-guide" style="padding:4px 10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px;color:var(--text-muted);">Show Steps</button>
+        </div>
+        <div id="setup-guide-content" style="display:none;">
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Follow these steps to connect your ZKTeco device to this application via TCP/IP (network cable or WiFi).</p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:16px;">
+            <!-- Step 1 -->
+            <div style="padding:14px;background:var(--surface-alt);border-radius:8px;border:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="background:#3b82f6;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">1</span>
+                <strong>Set a Static IP on the Device</strong>
+              </div>
+              <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.8;">
+                <li>On the ZKTeco device, press <strong>Menu</strong></li>
+                <li>Go to <strong>System</strong> → <strong>Network</strong></li>
+                <li>Set <strong>IP Address</strong> (e.g. <code>192.168.1.201</code>)</li>
+                <li>Set <strong>Subnet Mask</strong> (e.g. <code>255.255.255.0</code>)</li>
+                <li>Set <strong>Gateway</strong> (e.g. <code>192.168.1.1</code>)</li>
+                <li>Press <strong>OK</strong> to save</li>
+              </ol>
+            </div>
+
+            <!-- Step 2 -->
+            <div style="padding:14px;background:var(--surface-alt);border-radius:8px;border:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="background:#3b82f6;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">2</span>
+                <strong>Configure Your Computer's IP</strong>
+              </div>
+              <p style="font-size:13px;color:var(--text);margin:0 0 8px 0;">Your computer must be on the <strong>same network</strong> as the device. Set a static IP on the same subnet:</p>
+              <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.8;">
+                <li>Open <strong>Control Panel</strong> → <strong>Network and Sharing Center</strong></li>
+                <li>Click <strong>Change adapter settings</strong></li>
+                <li>Right-click your network adapter → <strong>Properties</strong></li>
+                <li>Select <strong>Internet Protocol Version 4 (TCP/IPv4)</strong> → <strong>Properties</strong></li>
+                <li>Select <strong>Use the following IP address</strong></li>
+                <li>Set IP: <code>192.168.1.100</code> (must be different from device)</li>
+                <li>Set Subnet: <code>255.255.255.0</code></li>
+                <li>Set Gateway: <code>192.168.1.1</code> (your router)</li>
+                <li>Click <strong>OK</strong> to save</li>
+              </ol>
+            </div>
+
+            <!-- Step 3 -->
+            <div style="padding:14px;background:var(--surface-alt);border-radius:8px;border:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="background:#3b82f6;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">3</span>
+                <strong>Connect the Device</strong>
+              </div>
+              <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.8;">
+                <li>Connect the device to your network via <strong>LAN cable</strong> or <strong>WiFi</strong></li>
+                <li>On your computer, open <strong>Command Prompt</strong></li>
+                <li>Type <code>ping 192.168.1.201</code> (device IP) to test connection</li>
+                <li>If you get replies, the connection is working</li>
+                <li>Add the device below with the same IP address</li>
+              </ol>
+            </div>
+
+            <!-- Step 4 -->
+            <div style="padding:14px;background:var(--surface-alt);border-radius:8px;border:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="background:#10b981;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">4</span>
+                <strong>Sync Attendance Data</strong>
+              </div>
+              <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.8;">
+                <li>Add the device in the form below</li>
+                <li>Select the device and click <strong>Connect</strong></li>
+                <li>Click <strong>Sync Attendance</strong> to import logs</li>
+                <li>Records will be matched to teachers automatically</li>
+              </ol>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;padding:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px;">
+            <p style="margin:0;font-size:13px;color:var(--text);">
+              <strong>Tips:</strong><br>
+              • The device's default port is <strong>4370</strong> — do not change this unless you know the device uses a different port.<br>
+              • Make sure your firewall allows connections on port <strong>4370</strong> (TCP).<br>
+              • The device and computer must be on the <strong>same subnet</strong> (e.g. both <code>192.168.1.x</code>).<br>
+              • If using WiFi, ensure the device is connected to the <strong>same network</strong> as your computer.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Device Form -->
+      <div class="card" style="margin-bottom:20px;">
+        <h3>Add New Device</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Configure a new biometric device for attendance syncing.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
+          <div class="form-group">
+            <label style="font-weight:500;font-size:13px;">Device Name</label>
+            <input type="text" id="device-name" placeholder="e.g. Main Entrance" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group">
+            <label style="font-weight:500;font-size:13px;">Serial Number</label>
+            <input type="text" id="device-serial" placeholder="e.g. A667230960706" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group">
+            <label style="font-weight:500;font-size:13px;">IP Address</label>
+            <input type="text" id="device-ip" placeholder="e.g. 192.168.1.201" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group">
+            <label style="font-weight:500;font-size:13px;">Port</label>
+            <input type="number" id="device-port" value="4370" placeholder="4370" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group">
+            <label style="font-weight:500;font-size:13px;">Device Type</label>
+            <select id="device-type" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+              <option value="zkteco">ZKTeco</option>
+              <option value="ngteco">NGTeco</option>
+            </select>
+          </div>
+        </div>
+        <button id="btn-add-device" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Add Device</button>
+        <span id="add-device-status" style="margin-left:12px;font-size:13px;"></span>
+      </div>
+
+      <!-- Device List -->
+      <div class="card" style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h3 style="margin:0;">Registered Devices</h3>
+          <button id="btn-refresh-devices" style="padding:6px 14px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Refresh</button>
+        </div>
+        <div id="devices-list-container">
+          <p style="color:var(--text-muted);font-size:13px;font-style:italic;">Loading devices...</p>
+        </div>
+      </div>
+
+      <!-- Device Connection Panel -->
+      <div class="card" id="device-connection-panel" style="display:none;">
+        <h3>Device Connection</h3>
+        <div id="connection-info" style="padding:12px;background:var(--surface-alt);border-radius:6px;margin-bottom:16px;"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+          <button id="btn-connect-device" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Connect</button>
+          <button id="btn-disconnect-device" style="padding:8px 16px;background:#ef4444;color:white;border:none;border-radius:6px;cursor:pointer;display:none;">Disconnect</button>
+          <button id="btn-sync-attendance" style="padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:6px;cursor:pointer;display:none;">Sync Attendance</button>
+          <button id="btn-clear-resync" style="padding:8px 16px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;display:none;">Clear & Re-sync</button>
+          <button id="btn-view-device-users" style="padding:8px 16px;background:#8b5cf6;color:white;border:none;border-radius:6px;cursor:pointer;display:none;">View Users</button>
+        </div>
+        <span id="connection-status" style="font-size:13px;"></span>
+      </div>
+
+      <!-- Sync Result -->
+      <div class="card" id="sync-result-card" style="display:none;">
+        <h3 id="sync-result-title">Sync Result</h3>
+        <p id="sync-result-message" style="font-size:14px;"></p>
+        <div id="sync-result-details" style="font-size:12px;margin-top:8px;"></div>
+      </div>
+
+      <!-- Device Users Modal -->
+      <div id="device-users-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:1000;">
+        <div style="background:var(--modal-bg);color:var(--modal-text);padding:20px;border-radius:8px;max-width:600px;width:90%;max-height:80vh;overflow:auto;border:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;">Device Users</h3>
+            <button id="btn-close-users-modal" style="padding:6px 12px;background:#9ca3af;color:white;border:none;border-radius:4px;cursor:pointer;">Close</button>
+          </div>
+          <div id="device-users-list"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function getTeachersView() {
+  return `
+    <div class="view-section active" id="teachers-view">
+      <div class="dashboard-header"><h1>Teacher Enrollment</h1><p>Manage teachers and enroll them to the ZKTeco device</p></div>
+
+      <!-- Device Status Banner -->
+      <div id="teachers-device-status" class="card" style="margin-bottom:20px;border-left:4px solid #3b82f6;">
+        <p style="margin:0;font-size:13px;" id="teachers-device-status-text">Checking device connection...</p>
+      </div>
+
+      <!-- Add Teacher Form -->
+      <div class="card" style="margin-bottom:20px;">
+        <h3>Add New Teacher</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Manually add a teacher to the database. The Biometric ID must match the ID registered on the ZKTeco device.</p>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-group" style="flex:1;min-width:200px;">
+            <label style="font-weight:500;font-size:13px;">Teacher Name</label>
+            <input type="text" id="teacher-name-input" placeholder="e.g. Juan Dela Cruz" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group" style="min-width:150px;">
+            <label style="font-weight:500;font-size:13px;">Biometric ID</label>
+            <input type="number" id="teacher-bio-id-input" placeholder="e.g. 1" min="1" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <div class="form-group" style="min-width:120px;">
+            <label style="font-weight:500;font-size:13px;">Device Role</label>
+            <select id="teacher-role-input" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+              <option value="0">User</option>
+              <option value="1">Admin</option>
+            </select>
+          </div>
+          <button id="btn-add-teacher" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;height:36px;">Add Teacher</button>
+        </div>
+        <span id="add-teacher-status" style="display:block;margin-top:8px;font-size:13px;"></span>
+      </div>
+
+      <!-- Teacher List -->
+      <div class="card" style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h3 style="margin:0;">Enrolled Teachers</h3>
+          <div style="display:flex;gap:8px;">
+            <button id="btn-refresh-teachers" style="padding:6px 14px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Refresh</button>
+            <button id="btn-enroll-all" style="padding:6px 14px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;display:none;">Enroll All to Device</button>
+          </div>
+        </div>
+        <div id="teachers-list-container">
+          <p style="color:var(--text-muted);font-size:13px;font-style:italic;">Loading teachers...</p>
+        </div>
+      </div>
+
+      <!-- Enrollment Result -->
+      <div class="card" id="enroll-result-card" style="display:none;">
+        <h3 id="enroll-result-title">Enrollment Result</h3>
+        <p id="enroll-result-message" style="font-size:14px;"></p>
+        <div id="enroll-result-details" style="font-size:12px;margin-top:8px;"></div>
+      </div>
+
+      <!-- Edit Teacher Modal -->
+      <div id="edit-teacher-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:1000;">
+        <div style="background:var(--modal-bg);color:var(--modal-text);padding:20px;border-radius:8px;max-width:420px;width:90%;border:1px solid var(--border);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;">Edit Teacher</h3>
+            <button id="btn-close-edit-modal" style="padding:4px 10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px;color:var(--text-muted);">✕</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-group">
+              <label style="font-weight:500;font-size:13px;">Teacher Name</label>
+              <input type="text" id="edit-teacher-name" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+            </div>
+            <div class="form-group">
+              <label style="font-weight:500;font-size:13px;">Biometric ID</label>
+              <input type="number" id="edit-teacher-bio-id" min="1" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+            </div>
+            <div class="form-group">
+              <label style="font-weight:500;font-size:13px;">Device Role</label>
+              <select id="edit-teacher-role" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+                <option value="0">User</option>
+                <option value="1">Admin</option>
+              </select>
+            </div>
+            <span id="edit-teacher-status" style="font-size:13px;"></span>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+              <button id="btn-cancel-edit-teacher" style="padding:8px 16px;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;cursor:pointer;">Cancel</button>
+              <button id="btn-save-edit-teacher" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Save Changes</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -602,6 +902,7 @@ function getAboutView() {
         <p style="line-height:1.7;font-size:14px;max-width:600px;margin-top:12px;">
           <strong>Features:</strong><br>
           • Biometric attendance import (NGTeco Cloud / USB devices)<br>
+          • ZKTeco device direct connection (TCP/IP) with sync & enrollment<br>
           • Automated DTR generation in CSC Form No. 48 format<br>
           • Teacher management with time schedule configuration<br>
           • User authentication and role-based access<br>
@@ -725,29 +1026,39 @@ function setupDashboardView() {
   const resultTitle = document.getElementById('import-result-title');
   const resultMessage = document.getElementById('import-result-message');
   const resultDetails = document.getElementById('import-result-details');
-  const cloudPanel = document.getElementById('source-cloud-panel');
-  const usbPanel = document.getElementById('source-usb-panel');
-  const tabCloud = document.getElementById('tab-cloud');
-  const tabUsb = document.getElementById('tab-usb');
+  const ngtecoCloudPanel = document.getElementById('source-ngteco-cloud-panel');
+  const ngtecoUsbPanel = document.getElementById('source-ngteco-usb-panel');
+  const zktecoUsbPanel = document.getElementById('source-zkteco-usb-panel');
+  const tabNgtecoCloud = document.getElementById('tab-ngteco-cloud');
+  const tabNgtecoUsb = document.getElementById('tab-ngteco-usb');
+  const tabZktecoUsb = document.getElementById('tab-zkteco-usb');
 
-  if (!tabCloud) return;
+  if (!tabNgtecoCloud) return;
 
   let selectedFilePath = null;
-  let activeSource = 'cloud'; // 'cloud' or 'usb'
+  let activeSource = 'ngteco-cloud';
 
   // ── Source Tab Switching ──
   function setActiveSource(source) {
     activeSource = source;
-    if (source === 'cloud') {
-      cloudPanel.style.display = '';
-      usbPanel.style.display = 'none';
-      tabCloud.classList.add('active');
-      tabUsb.classList.remove('active');
-    } else {
-      cloudPanel.style.display = 'none';
-      usbPanel.style.display = '';
-      tabUsb.classList.add('active');
-      tabCloud.classList.remove('active');
+    // Hide all panels
+    ngtecoCloudPanel.style.display = 'none';
+    ngtecoUsbPanel.style.display = 'none';
+    zktecoUsbPanel.style.display = 'none';
+    // Remove active from all tabs
+    tabNgtecoCloud.classList.remove('active');
+    tabNgtecoUsb.classList.remove('active');
+    tabZktecoUsb.classList.remove('active');
+    // Show selected panel and activate tab
+    if (source === 'ngteco-cloud') {
+      ngtecoCloudPanel.style.display = '';
+      tabNgtecoCloud.classList.add('active');
+    } else if (source === 'ngteco-usb') {
+      ngtecoUsbPanel.style.display = '';
+      tabNgtecoUsb.classList.add('active');
+    } else if (source === 'zkteco-usb') {
+      zktecoUsbPanel.style.display = '';
+      tabZktecoUsb.classList.add('active');
     }
     // Reset preview when switching
     previewCard.style.display = 'none';
@@ -755,8 +1066,9 @@ function setupDashboardView() {
     selectedFilePath = null;
   }
 
-  tabCloud.addEventListener('click', () => setActiveSource('cloud'));
-  tabUsb.addEventListener('click', () => setActiveSource('usb'));
+  tabNgtecoCloud.addEventListener('click', () => setActiveSource('ngteco-cloud'));
+  tabNgtecoUsb.addEventListener('click', () => setActiveSource('ngteco-usb'));
+  tabZktecoUsb.addEventListener('click', () => setActiveSource('zkteco-usb'));
 
   // Step 1: Open NGTeco portal (cloud only)
   btnOpenPortal.addEventListener('click', async () => {
@@ -765,15 +1077,24 @@ function setupDashboardView() {
 
   // ── Shared Import Handler ──
   async function handleImportClick() {
-    const dialogTitle = activeSource === 'cloud'
-      ? 'Select NGTeco Office Export File'
-      : 'Select USB Device Attendance File';
+    let dialogTitle, sourceLabelText;
+    if (activeSource === 'ngteco-cloud') {
+      dialogTitle = 'Select NGTeco Office Export File';
+      sourceLabelText = 'Source: NGTeco Office (Cloud)';
+    } else if (activeSource === 'ngteco-usb') {
+      dialogTitle = 'Select NGTeco USB Attendance File';
+      sourceLabelText = 'Source: NGTeco USB Device';
+    } else {
+      dialogTitle = 'Select ZKTeco USB Attendance File';
+      sourceLabelText = 'Source: ZKTeco USB Device';
+    }
+
     const fileResult = await ipcRenderer.invoke('select-import-file', dialogTitle);
     if (!fileResult.success) return;
 
     selectedFilePath = fileResult.filePath;
     fileNameEl.textContent = `File: ${selectedFilePath.split(/[/\\]/).pop()}`;
-    sourceLabel.textContent = activeSource === 'cloud' ? '☁️ Source: NGTeco Office (Cloud)' : '🔌 Source: USB Device';
+    sourceLabel.textContent = sourceLabelText;
 
     // Preview the file
     const preview = await ipcRenderer.invoke('preview-import-file', selectedFilePath);
@@ -836,9 +1157,10 @@ function setupDashboardView() {
     resultCard.style.display = 'none';
   }
 
-  // Attach to both import buttons
+  // Attach to all import buttons
   document.getElementById('btn-import-cloud').addEventListener('click', handleImportClick);
-  document.getElementById('btn-import-usb').addEventListener('click', handleImportClick);
+  document.getElementById('btn-import-ngteco-usb').addEventListener('click', handleImportClick);
+  document.getElementById('btn-import-zkteco-usb').addEventListener('click', handleImportClick);
 
   // Confirm import
   btnConfirm.addEventListener('click', async () => {
@@ -887,6 +1209,608 @@ function setupDashboardView() {
     previewCard.style.display = 'none';
     selectedFilePath = null;
   });
+}
+
+async function setupDevicesView() {
+  let selectedDeviceId = null;
+  let selectedDevice = null;
+
+  // Setup guide toggle
+  const btnToggleGuide = document.getElementById('btn-toggle-setup-guide');
+  const guideContent = document.getElementById('setup-guide-content');
+  if (btnToggleGuide && guideContent) {
+    btnToggleGuide.addEventListener('click', () => {
+      const isVisible = guideContent.style.display !== 'none';
+      guideContent.style.display = isVisible ? 'none' : '';
+      btnToggleGuide.textContent = isVisible ? 'Show Steps' : 'Hide Steps';
+    });
+  }
+
+  // Load devices list
+  async function loadDevices() {
+    const devices = await ipcRenderer.invoke('get-devices');
+    const container = document.getElementById('devices-list-container');
+
+    if (devices.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;font-style:italic;">No devices registered. Add a device above.</p>';
+      return;
+    }
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+    html += '<thead><tr style="background:var(--surface-alt);">';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Name</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Serial</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">IP Address</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Port</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Type</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Last Sync</th>';
+    html += '<th style="padding:8px;text-align:center;border-bottom:1px solid var(--border);">Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    devices.forEach(d => {
+      const lastSync = d.last_sync ? new Date(d.last_sync).toLocaleString() : 'Never';
+      const isActive = d.status === 'active';
+      html += `<tr style="border-bottom:1px solid var(--border);${selectedDeviceId === d.id ? 'background:var(--surface-alt);' : ''}" class="device-row" data-device-id="${d.id}" data-device-name="${d.name}" data-device-serial="${d.serial_number || ''}" data-device-ip="${d.ip_address}" data-device-port="${d.port}" data-device-type="${d.device_type}">
+        <td style="padding:8px;font-weight:500;cursor:pointer;">${d.name}</td>
+        <td style="padding:8px;font-family:monospace;font-size:12px;cursor:pointer;">${d.serial_number || '—'}</td>
+        <td style="padding:8px;font-family:monospace;cursor:pointer;">${d.ip_address}</td>
+        <td style="padding:8px;cursor:pointer;">${d.port}</td>
+        <td style="padding:8px;cursor:pointer;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:${d.device_type === 'zkteco' ? 'rgba(59,130,246,0.1);color:#3b82f6' : 'rgba(16,185,129,0.1);color:#10b981'}">${d.device_type.toUpperCase()}</span></td>
+        <td style="padding:8px;color:var(--text-muted);cursor:pointer;font-size:12px;">${lastSync}</td>
+        <td style="padding:8px;text-align:center;">
+          <button class="btn-select-device" data-device-id="${d.id}" style="padding:4px 10px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;">Select</button>
+          <button class="btn-delete-device" data-device-id="${d.id}" data-device-name="${d.name}" style="padding:4px 10px;background:rgba(239,68,68,0.1);color:var(--danger);border:1px solid rgba(239,68,68,0.2);border-radius:4px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    // Attach event handlers
+    container.querySelectorAll('.btn-select-device').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const deviceId = parseInt(btn.getAttribute('data-device-id'));
+        selectDevice(deviceId, devices);
+      });
+    });
+
+    container.querySelectorAll('.btn-delete-device').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const deviceId = parseInt(btn.getAttribute('data-device-id'));
+        const deviceName = btn.getAttribute('data-device-name');
+        if (confirm(`Delete device "${deviceName}"?`)) {
+          await ipcRenderer.invoke('delete-device', deviceId);
+          if (selectedDeviceId === deviceId) {
+            selectedDeviceId = null;
+            selectedDevice = null;
+            document.getElementById('device-connection-panel').style.display = 'none';
+          }
+          loadDevices();
+          showToast('Device deleted');
+        }
+      });
+    });
+
+    container.querySelectorAll('.device-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const deviceId = parseInt(row.getAttribute('data-device-id'));
+        selectDevice(deviceId, devices);
+      });
+    });
+  }
+
+  function selectDevice(deviceId, devices) {
+    selectedDeviceId = deviceId;
+    selectedDevice = devices.find(d => d.id === deviceId);
+    if (!selectedDevice) return;
+
+    const panel = document.getElementById('device-connection-panel');
+    const info = document.getElementById('connection-info');
+    panel.style.display = '';
+    info.innerHTML = `
+      <strong>${selectedDevice.name}</strong> — 
+      <span style="font-family:monospace;">${selectedDevice.ip_address}:${selectedDevice.port}</span>
+      ${selectedDevice.serial_number ? `<br>Serial: <span style="font-family:monospace;">${selectedDevice.serial_number}</span>` : ''}
+    `;
+
+    // Highlight selected row
+    document.querySelectorAll('.device-row').forEach(r => r.style.background = '');
+    const selectedRow = document.querySelector(`.device-row[data-device-id="${deviceId}"]`);
+    if (selectedRow) selectedRow.style.background = 'var(--surface-alt)';
+
+    // Check connection status
+    checkConnectionStatus();
+  }
+
+  async function checkConnectionStatus() {
+    const status = await ipcRenderer.invoke('get-device-status');
+    const statusEl = document.getElementById('connection-status');
+    const btnConnect = document.getElementById('btn-connect-device');
+    const btnDisconnect = document.getElementById('btn-disconnect-device');
+    const btnSync = document.getElementById('btn-sync-attendance');
+    const btnClearResync = document.getElementById('btn-clear-resync');
+    const btnUsers = document.getElementById('btn-view-device-users');
+
+    if (status.connected) {
+      statusEl.innerHTML = '<span style="color:#10b981;font-weight:600;">● Connected</span>';
+      btnConnect.style.display = 'none';
+      btnDisconnect.style.display = '';
+      btnSync.style.display = '';
+      btnClearResync.style.display = '';
+      btnUsers.style.display = '';
+    } else {
+      statusEl.innerHTML = '<span style="color:#9ca3af;">● Not connected</span>';
+      btnConnect.style.display = '';
+      btnDisconnect.style.display = 'none';
+      btnSync.style.display = 'none';
+      btnClearResync.style.display = 'none';
+      btnUsers.style.display = 'none';
+    }
+  }
+
+  // Add device button
+  document.getElementById('btn-add-device').addEventListener('click', async () => {
+    const name = document.getElementById('device-name').value.trim();
+    const serial = document.getElementById('device-serial').value.trim();
+    const ip = document.getElementById('device-ip').value.trim();
+    const port = parseInt(document.getElementById('device-port').value) || 4370;
+    const type = document.getElementById('device-type').value;
+    const statusEl = document.getElementById('add-device-status');
+
+    if (!name) { showToast('Please enter a device name'); return; }
+    if (!ip) { showToast('Please enter an IP address'); return; }
+
+    const result = await ipcRenderer.invoke('add-device', { name, serial_number: serial, ip_address: ip, port, device_type: type });
+    if (result.success) {
+      statusEl.textContent = '✓ Device added!';
+      statusEl.style.color = '#10b981';
+      document.getElementById('device-name').value = '';
+      document.getElementById('device-serial').value = '';
+      document.getElementById('device-ip').value = '';
+      document.getElementById('device-port').value = '4370';
+      loadDevices();
+      showToast('Device added successfully');
+    } else {
+      statusEl.textContent = '✗ ' + result.message;
+      statusEl.style.color = '#ef4444';
+    }
+    setTimeout(() => statusEl.textContent = '', 3000);
+  });
+
+  // Refresh button
+  document.getElementById('btn-refresh-devices').addEventListener('click', loadDevices);
+
+  // Connect button
+  document.getElementById('btn-connect-device').addEventListener('click', async () => {
+    if (!selectedDevice) return;
+    const statusEl = document.getElementById('connection-status');
+    statusEl.innerHTML = '<span style="color:#f59e0b;">● Connecting...</span>';
+
+    const result = await ipcRenderer.invoke('connect-device', selectedDevice.ip_address, selectedDevice.port);
+    if (result.success) {
+      showToast('Connected to device');
+    } else {
+      showToast('Connection failed: ' + result.message);
+    }
+    checkConnectionStatus();
+  });
+
+  // Disconnect button
+  document.getElementById('btn-disconnect-device').addEventListener('click', async () => {
+    await ipcRenderer.invoke('disconnect-device');
+    showToast('Disconnected');
+    checkConnectionStatus();
+  });
+
+  // Sync button
+  document.getElementById('btn-sync-attendance').addEventListener('click', async () => {
+    const statusEl = document.getElementById('connection-status');
+    statusEl.innerHTML = '<span style="color:#6366f1;">● Syncing attendance data...</span>';
+    document.getElementById('btn-sync-attendance').disabled = true;
+
+    const result = await ipcRenderer.invoke('sync-device-attendance');
+    document.getElementById('btn-sync-attendance').disabled = false;
+    checkConnectionStatus();
+
+    // Show result
+    const resultCard = document.getElementById('sync-result-card');
+    const resultTitle = document.getElementById('sync-result-title');
+    const resultMessage = document.getElementById('sync-result-message');
+    const resultDetails = document.getElementById('sync-result-details');
+
+    resultCard.style.display = '';
+    if (result.success) {
+      resultTitle.textContent = '✅ Sync Complete';
+      resultTitle.style.color = '#10b981';
+      resultMessage.textContent = result.message;
+      resultMessage.style.color = 'var(--text)';
+      let detailsHtml = '';
+      if (result.synced > 0) detailsHtml += `<span style="color:#10b981;">● ${result.synced} new record(s) added</span><br>`;
+      if (result.skipped > 0) detailsHtml += `<span style="color:#f59e0b;">● ${result.skipped} duplicate(s) skipped</span><br>`;
+      if (result.autoCreated > 0) detailsHtml += `<span style="color:#3b82f6;">● Auto-created ${result.autoCreated} teacher(s): ${(result.autoCreatedNames || []).join(', ')}</span>`;
+      resultDetails.innerHTML = detailsHtml;
+    } else {
+      resultTitle.textContent = '❌ Sync Failed';
+      resultTitle.style.color = '#ef4444';
+      resultMessage.textContent = result.message;
+      resultMessage.style.color = '#ef4444';
+      resultDetails.innerHTML = '';
+    }
+  });
+
+  // Clear & Re-sync button
+  document.getElementById('btn-clear-resync').addEventListener('click', async () => {
+    const confirmed = await showConfirm('This will delete ALL teachers and attendance logs, then re-sync fresh data from the device. Continue?');
+    if (!confirmed) return;
+
+    const statusEl = document.getElementById('connection-status');
+    statusEl.innerHTML = '<span style="color:#f59e0b;">● Clearing old data...</span>';
+
+    const clearResult = await ipcRenderer.invoke('clear-device-sync-data');
+    if (!clearResult.success) {
+      showToast('Error: ' + clearResult.message);
+      checkConnectionStatus();
+      return;
+    }
+
+    showToast(clearResult.message);
+    statusEl.innerHTML = '<span style="color:#6366f1;">● Re-syncing attendance data...</span>';
+
+    // Now re-sync
+    const result = await ipcRenderer.invoke('sync-device-attendance');
+    checkConnectionStatus();
+
+    // Show result
+    const resultCard = document.getElementById('sync-result-card');
+    const resultTitle = document.getElementById('sync-result-title');
+    const resultMessage = document.getElementById('sync-result-message');
+    const resultDetails = document.getElementById('sync-result-details');
+
+    resultCard.style.display = '';
+    if (result.success) {
+      resultTitle.textContent = '✅ Re-sync Complete';
+      resultTitle.style.color = '#10b981';
+      resultMessage.textContent = result.message;
+      resultMessage.style.color = 'var(--text)';
+      let detailsHtml = '';
+      if (result.synced > 0) detailsHtml += `<span style="color:#10b981;">● ${result.synced} new record(s) added</span><br>`;
+      if (result.skipped > 0) detailsHtml += `<span style="color:#f59e0b;">● ${result.skipped} duplicate(s) skipped</span><br>`;
+      if (result.autoCreated > 0) detailsHtml += `<span style="color:#3b82f6;">● Auto-created ${result.autoCreated} teacher(s): ${(result.autoCreatedNames || []).join(', ')}</span>`;
+      resultDetails.innerHTML = detailsHtml;
+    } else {
+      resultTitle.textContent = '❌ Re-sync Failed';
+      resultTitle.style.color = '#ef4444';
+      resultMessage.textContent = result.message;
+      resultMessage.style.color = '#ef4444';
+      resultDetails.innerHTML = '';
+    }
+  });
+
+  // View users button
+  document.getElementById('btn-view-device-users').addEventListener('click', async () => {
+    const result = await ipcRenderer.invoke('get-device-users');
+    const modal = document.getElementById('device-users-modal');
+    const list = document.getElementById('device-users-list');
+
+    if (result.success && result.data && result.data.length > 0) {
+      let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+      html += '<thead><tr style="background:var(--surface-alt);"><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">User ID</th><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Name</th><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Role</th></tr></thead><tbody>';
+      result.data.forEach(u => {
+        html += `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;font-family:monospace;">${u.userId || u.id || ''}</td>
+          <td style="padding:8px;">${u.name || '—'}</td>
+          <td style="padding:8px;">${u.role === 1 ? 'Admin' : 'User'}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      list.innerHTML = html;
+    } else {
+      list.innerHTML = `<p style="color:var(--text-muted);">${result.message || 'No users found on device.'}</p>`;
+    }
+
+    modal.style.display = 'flex';
+  });
+
+  // Close users modal
+  document.getElementById('btn-close-users-modal').addEventListener('click', () => {
+    document.getElementById('device-users-modal').style.display = 'none';
+  });
+
+  // Close modal on outside click
+  document.getElementById('device-users-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'device-users-modal') {
+      document.getElementById('device-users-modal').style.display = 'none';
+    }
+  });
+
+  // Initial load
+  await loadDevices();
+  checkConnectionStatus();
+}
+
+async function setupTeachersView() {
+  async function checkDeviceStatus() {
+    const status = await ipcRenderer.invoke('get-device-status');
+    const statusText = document.getElementById('teachers-device-status-text');
+    const btnEnrollAll = document.getElementById('btn-enroll-all');
+    const banner = document.getElementById('teachers-device-status');
+
+    if (status.connected) {
+      statusText.innerHTML = '<span style="color:#10b981;font-weight:600;">● Device Connected</span> — You can enroll teachers to the ZKTeco device.';
+      banner.style.borderLeftColor = '#10b981';
+      btnEnrollAll.style.display = '';
+    } else {
+      statusText.innerHTML = '<span style="color:#f59e0b;font-weight:600;">● No Device Connected</span> — Go to the <strong>Devices</strong> tab to connect before enrolling.';
+      banner.style.borderLeftColor = '#f59e0b';
+      btnEnrollAll.style.display = 'none';
+    }
+  }
+
+  async function loadTeachers() {
+    const teachers = await ipcRenderer.invoke('get-teachers');
+    const container = document.getElementById('teachers-list-container');
+
+    if (teachers.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;font-style:italic;">No teachers added yet. Use the form above to add one.</p>';
+      return;
+    }
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+    html += '<thead><tr style="background:var(--surface-alt);">';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Name</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Biometric ID</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Status</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Role</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Created</th>';
+    html += '<th style="padding:8px;text-align:center;border-bottom:1px solid var(--border);">Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    teachers.forEach(t => {
+      const isActive = (t.status || 'active') === 'active';
+      const statusColor = isActive ? '#10b981' : '#9ca3af';
+      const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString() : '—';
+      const roleLabel = t.device_role === 1 ? 'Admin' : 'User';
+      const roleColor = t.device_role === 1 ? '#8b5cf6' : '#6b7280';
+      html += `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px;font-weight:500;">${t.name}</td>
+        <td style="padding:8px;font-family:monospace;">${t.biometric_id}</td>
+        <td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:white;background:${statusColor};">${isActive ? 'Active' : 'Inactive'}</span></td>
+        <td style="padding:8px;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:white;background:${roleColor};">${roleLabel}</span></td>
+        <td style="padding:8px;color:var(--text-muted);font-size:12px;">${createdDate}</td>
+        <td style="padding:8px;text-align:center;">
+          <button class="btn-edit-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-bio="${t.biometric_id}" data-teacher-role="${t.device_role || 0}" style="padding:4px 10px;background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.3);border-radius:4px;cursor:pointer;font-size:11px;">Edit</button>
+          <button class="btn-enroll-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" style="padding:4px 10px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;display:none;">Enroll</button>
+          <button class="btn-toggle-teacher-status" data-teacher-id="${t.id}" data-teacher-name="${t.name}" data-teacher-status="${t.status || 'active'}" style="padding:4px 10px;background:${isActive ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)'};color:${isActive ? '#f59e0b' : '#10b981'};border:1px solid ${isActive ? 'rgba(245,158,11,0.3)' : 'rgba(16,185,129,0.3)'};border-radius:4px;cursor:pointer;font-size:11px;">${isActive ? 'Deactivate' : 'Activate'}</button>
+          <button class="btn-delete-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}" style="padding:4px 10px;background:rgba(239,68,68,0.1);color:var(--danger);border:1px solid rgba(239,68,68,0.2);border-radius:4px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    // Show/hide enroll buttons based on device status
+    const deviceStatus = await ipcRenderer.invoke('get-device-status');
+    const enrollBtns = container.querySelectorAll('.btn-enroll-teacher');
+    if (deviceStatus.connected) {
+      enrollBtns.forEach(btn => btn.style.display = '');
+    }
+
+    // Attach event handlers
+    container.querySelectorAll('.btn-enroll-teacher').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const teacherId = parseInt(btn.getAttribute('data-teacher-id'));
+        const teacherName = btn.getAttribute('data-teacher-name');
+        btn.disabled = true;
+        btn.textContent = 'Enrolling...';
+        const result = await ipcRenderer.invoke('enroll-teacher-to-device', teacherId);
+        btn.disabled = false;
+        btn.textContent = 'Enroll';
+        if (result.success) {
+          showToast(`"${teacherName}" enrolled to device`);
+        } else {
+          showToast('Enrollment failed: ' + result.message);
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-delete-teacher').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const teacherId = parseInt(btn.getAttribute('data-teacher-id'));
+        const teacherName = btn.getAttribute('data-teacher-name');
+        const confirmed = await showConfirm(`Delete teacher "${teacherName}"? This will also remove all their attendance logs.`);
+        if (!confirmed) return;
+        const result = await ipcRenderer.invoke('delete-teacher', teacherId);
+        if (result.success) {
+          showToast(`"${teacherName}" deleted`);
+          loadTeachers();
+        } else {
+          showToast('Delete failed: ' + result.message);
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-toggle-teacher-status').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const teacherId = parseInt(btn.getAttribute('data-teacher-id'));
+        const teacherName = btn.getAttribute('data-teacher-name');
+        const currentStatus = btn.getAttribute('data-teacher-status');
+        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        const result = await ipcRenderer.invoke('update-teacher-status', teacherId, newStatus);
+        if (result.success) {
+          showToast(`"${teacherName}" is now ${newStatus}`);
+          loadTeachers();
+        } else {
+          showToast('Status update failed: ' + result.message);
+        }
+      });
+    });
+  }
+
+  // Add teacher button
+  document.getElementById('btn-add-teacher').addEventListener('click', async () => {
+    const nameInput = document.getElementById('teacher-name-input');
+    const bioIdInput = document.getElementById('teacher-bio-id-input');
+    const roleInput = document.getElementById('teacher-role-input');
+    const statusEl = document.getElementById('add-teacher-status');
+    const name = nameInput.value.trim();
+    const biometric_id = bioIdInput.value.trim();
+    const device_role = parseInt(roleInput.value) || 0;
+
+    if (!name) {
+      statusEl.textContent = 'Please enter a teacher name.';
+      statusEl.style.color = '#ef4444';
+      return;
+    }
+    if (!biometric_id || parseInt(biometric_id) <= 0) {
+      statusEl.textContent = 'Please enter a valid Biometric ID.';
+      statusEl.style.color = '#ef4444';
+      return;
+    }
+
+    const result = await ipcRenderer.invoke('add-teacher', { name, biometric_id: parseInt(biometric_id), device_role });
+    if (result.success) {
+      statusEl.textContent = `✓ "${name}" added successfully!`;
+      statusEl.style.color = '#10b981';
+      nameInput.value = '';
+      bioIdInput.value = '';
+      roleInput.value = '0';
+      showToast(`"${name}" added to database`);
+      loadTeachers();
+    } else {
+      statusEl.textContent = '✗ ' + result.message;
+      statusEl.style.color = '#ef4444';
+    }
+    setTimeout(() => statusEl.textContent = '', 4000);
+  });
+
+  // Refresh button
+  document.getElementById('btn-refresh-teachers').addEventListener('click', loadTeachers);
+
+  // Enroll All button
+  document.getElementById('btn-enroll-all').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-enroll-all');
+    const confirmed = await showConfirm('Enroll all active teachers to the connected ZKTeco device?');
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Enrolling...';
+
+    const result = await ipcRenderer.invoke('enroll-all-teachers-to-device');
+    btn.disabled = false;
+    btn.textContent = 'Enroll All to Device';
+
+    const resultCard = document.getElementById('enroll-result-card');
+    const resultTitle = document.getElementById('enroll-result-title');
+    const resultMessage = document.getElementById('enroll-result-message');
+    const resultDetails = document.getElementById('enroll-result-details');
+
+    resultCard.style.display = '';
+    if (result.success) {
+      resultTitle.textContent = '✅ Enrollment Complete';
+      resultTitle.style.color = '#10b981';
+      resultMessage.textContent = result.message;
+      resultMessage.style.color = 'var(--text)';
+      let detailsHtml = '';
+      if (result.enrolled > 0) detailsHtml += `<span style="color:#10b981;">● ${result.enrolled} teacher(s) enrolled</span><br>`;
+      if (result.failed > 0) {
+        detailsHtml += `<span style="color:#ef4444;">● ${result.failed} teacher(s) failed:</span><br>`;
+        (result.errors || []).forEach(err => {
+          detailsHtml += `<span style="color:#ef4444;margin-left:12px;">— ${err}</span><br>`;
+        });
+      }
+      resultDetails.innerHTML = detailsHtml;
+    } else {
+      resultTitle.textContent = '❌ Enrollment Failed';
+      resultTitle.style.color = '#ef4444';
+      resultMessage.textContent = result.message;
+      resultMessage.style.color = '#ef4444';
+      resultDetails.innerHTML = '';
+    }
+  });
+
+  // ── Edit Teacher Modal ──
+  let editingTeacherId = null;
+
+  function openEditModal(teacherId, name, bioId, deviceRole) {
+    editingTeacherId = teacherId;
+    document.getElementById('edit-teacher-name').value = name;
+    document.getElementById('edit-teacher-bio-id').value = bioId;
+    document.getElementById('edit-teacher-role').value = deviceRole || 0;
+    document.getElementById('edit-teacher-status').textContent = '';
+    document.getElementById('edit-teacher-modal').style.display = 'flex';
+  }
+
+  function closeEditModal() {
+    editingTeacherId = null;
+    document.getElementById('edit-teacher-modal').style.display = 'none';
+  }
+
+  // Event delegation for edit buttons on teacher rows
+  document.getElementById('teachers-list-container').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-edit-teacher');
+    if (!btn) return;
+    e.stopPropagation();
+    const teacherId = parseInt(btn.getAttribute('data-teacher-id'));
+    const teacherName = btn.getAttribute('data-teacher-name');
+    const teacherBio = btn.getAttribute('data-teacher-bio');
+    const teacherRole = btn.getAttribute('data-teacher-role');
+    openEditModal(teacherId, teacherName, teacherBio, teacherRole);
+  });
+
+  document.getElementById('btn-save-edit-teacher').addEventListener('click', async () => {
+    if (!editingTeacherId) return;
+    const name = document.getElementById('edit-teacher-name').value.trim();
+    const bioId = document.getElementById('edit-teacher-bio-id').value.trim();
+    const device_role = parseInt(document.getElementById('edit-teacher-role').value) || 0;
+    const statusEl = document.getElementById('edit-teacher-status');
+
+    if (!name) {
+      statusEl.textContent = 'Please enter a name.';
+      statusEl.style.color = '#ef4444';
+      return;
+    }
+    if (!bioId || parseInt(bioId) <= 0) {
+      statusEl.textContent = 'Please enter a valid Biometric ID.';
+      statusEl.style.color = '#ef4444';
+      return;
+    }
+
+    const result = await ipcRenderer.invoke('update-teacher', editingTeacherId, { name, biometric_id: parseInt(bioId), device_role });
+    if (result.success) {
+      closeEditModal();
+      showToast('Teacher updated');
+      loadTeachers();
+    } else {
+      statusEl.textContent = result.message;
+      statusEl.style.color = '#ef4444';
+    }
+  });
+
+  document.getElementById('btn-cancel-edit-teacher').addEventListener('click', closeEditModal);
+  document.getElementById('btn-close-edit-modal').addEventListener('click', closeEditModal);
+  document.getElementById('edit-teacher-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'edit-teacher-modal') closeEditModal();
+  });
+
+  // Refresh teacher list and device status each time the tab is visited
+  const teachersNavBtn = document.getElementById('nav-teachers');
+  if (teachersNavBtn) {
+    teachersNavBtn.addEventListener('click', () => {
+      loadTeachers();
+      checkDeviceStatus();
+    });
+  }
+
+  // Initial load
+  await loadTeachers();
+  await checkDeviceStatus();
 }
 
 async function setupDtrView() {
