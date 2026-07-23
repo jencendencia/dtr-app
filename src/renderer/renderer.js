@@ -1437,13 +1437,13 @@ async function setupDevicesView() {
 
   // Clear & Re-sync button
   document.getElementById('btn-clear-resync').addEventListener('click', async () => {
-    const confirmed = await showConfirm('This will delete ALL teachers and attendance logs, then re-sync fresh data from the device. Continue?');
+    const confirmed = await showConfirm('This will clear attendance logs from the device AND delete all local teachers and logs, then re-sync fresh data. Continue?');
     if (!confirmed) return;
 
     const statusEl = document.getElementById('connection-status');
-    statusEl.innerHTML = '<span style="color:#f59e0b;">● Clearing old data...</span>';
+    statusEl.innerHTML = '<span style="color:#f59e0b;">● Clearing device and local data...</span>';
 
-    const clearResult = await ipcRenderer.invoke('clear-device-sync-data');
+    const clearResult = await ipcRenderer.invoke('clear-device-data');
     if (!clearResult.success) {
       showToast('Error: ' + clearResult.message);
       checkConnectionStatus();
@@ -2165,16 +2165,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
   }
   
   const monthNum = parseInt(month).toString().padStart(2, '0');
-  
-  if (logs.length === 0) {
-    // Check if month has any holidays
-    const hasHolidays = holidays && Object.keys(holidays).length > 0;
-    if (!hasHolidays) {
-      logsContainer.innerHTML = '<div style="padding:10px;color:#6b7280;">No logs found</div>';
-      return;
-    }
-  }
-  
+
   // Group logs by day
   const logsByDay = {};
   logs.forEach(l => {
@@ -2198,7 +2189,8 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
   html += '<tbody>';
 
   // Process each day
-  for (let i = 1; i <= 31; i++) {
+  const daysInMonth = new Date(year, parseInt(month), 0).getDate();
+  for (let i = 1; i <= daysInMonth; i++) {
     const dayLogs = logsByDay[i] || [];
     
     // Build date string for holiday lookup
@@ -2208,9 +2200,6 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
     const isSuspension = holiday && holiday.type === 'suspension';
     const isHalfDay = holiday && holiday.is_half_day;
     const halfDayPeriod = holiday ? holiday.half_day_period : null;
-
-    // Skip days with no logs AND no holidays
-    if (dayLogs.length === 0 && !holiday) continue;
 
     let amIn = '', amOut = '', pmIn = '', pmOut = '';
     let amInMins = null, amOutMins = null, pmInMins = null, pmOutMins = null;
@@ -2352,8 +2341,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         showToast('Cannot edit logs on a full-day suspension');
         return;
       }
-      const dayLogs = logsByDay[day];
-      if (!dayLogs) return;
+      const dayLogs = logsByDay[day] || [];
       showEditDayModal(day, dayLogs, teacherId, logsByDay, currentMonth, currentYear);
     });
   });
@@ -2368,7 +2356,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         return;
       }
       if (await showConfirm(`Are you sure you want to delete all logs for day ${day}?`)) {
-        const dayLogs = logsByDay[day];
+        const dayLogs = logsByDay[day] || [];
         for (const log of dayLogs) {
           await ipcRenderer.invoke('delete-attendance-log', log.id);
         }

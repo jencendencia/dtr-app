@@ -228,6 +228,25 @@ class ZktecoService {
   }
 
   /**
+   * Clear all attendance logs from the device.
+   * @returns {{success: boolean, message?: string}}
+   */
+  async clearAttendanceLog() {
+    if (!this.isConnected()) {
+      return { success: false, message: 'Not connected to any device.' };
+    }
+
+    try {
+      await this.device.clearAttendanceLog();
+      console.log('[ZktecoService] Cleared attendance logs from device');
+      return { success: true, message: 'Attendance logs cleared from device.' };
+    } catch (err) {
+      console.error('[ZktecoService] Clear attendance log error:', err);
+      return { success: false, message: `Failed to clear logs: ${err.message}` };
+    }
+  }
+
+  /**
    * Get device status/info.
    */
   async getStatus() {

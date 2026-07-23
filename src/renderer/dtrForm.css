@@ -42,8 +42,8 @@
 
   /* Ensure exactly 1 page per form without clipping */
   .dtr-printable-area {
-    width: 195mm !important;
-    height: 275mm !important; /* Perfect A4 fit */
+    width: 146mm !important;
+    height: 206mm !important; /* 75% of A4 fit */
     box-sizing: border-box !important;
     margin: 0 auto !important;
     padding: 5mm 10mm !important;
@@ -217,6 +217,8 @@
   font-family: "Times New Roman", Times, serif;
   color: #000;
   box-sizing: border-box;
+  max-width: 75%;
+  margin: 0 auto;
 }
 
 .dtr-header { margin-bottom: 2px; }

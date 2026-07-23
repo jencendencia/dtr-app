@@ -290,10 +290,16 @@ ipcMain.handle('update-teacher', async (event, teacherId, updates) => {
 
 ipcMain.handle('delete-teacher', async (event, teacherId) => {
   try {
-    const teacher = db.prepare('SELECT name FROM Teachers WHERE id = ?').get(teacherId);
+    const teacher = db.prepare('SELECT id, name FROM Teachers WHERE id = ?').get(teacherId);
     if (!teacher) {
       return { success: false, message: 'Teacher not found.' };
     }
+
+    // Delete from device if connected
+    if (zktecoService.isConnected()) {
+      await zktecoService.deleteUser(teacher.id);
+    }
+
     db.prepare('DELETE FROM AttendanceLogs WHERE teacher_id = ?').run(teacherId);
     db.prepare('DELETE FROM TeacherTimeSchedule WHERE teacher_id = ?').run(teacherId);
     db.prepare('DELETE FROM Teachers WHERE id = ?').run(teacherId);
@@ -1039,6 +1045,42 @@ ipcMain.handle('clear-device-sync-data', async () => {
     return { success: true, message: `Cleared ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s). You can now re-sync.`, cleared: allTeachers.length };
   } catch (err) {
     console.error('Error clearing device sync data:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+// ─── Clear Device Data (Device + DB) ─────────────────────────
+ipcMain.handle('clear-device-data', async () => {
+  try {
+    const messages = [];
+
+    // 1. Clear attendance logs on the physical device
+    const clearLogsResult = await zktecoService.clearAttendanceLog();
+    if (clearLogsResult.success) {
+      messages.push('Device attendance logs cleared');
+    } else {
+      messages.push(`Device log clear failed: ${clearLogsResult.message}`);
+    }
+
+    // 2. Clear local DB (teachers + attendance logs)
+    const allTeachers = db.prepare("SELECT id, name, biometric_id FROM Teachers").all();
+
+    if (allTeachers.length > 0) {
+      const teacherIds = allTeachers.map(t => t.id);
+      const placeholders = teacherIds.map(() => '?').join(',');
+
+      const logResult = db.prepare(`DELETE FROM AttendanceLogs WHERE teacher_id IN (${placeholders})`).run(...teacherIds);
+      db.prepare(`DELETE FROM Teachers WHERE id IN (${placeholders})`).run(...teacherIds);
+
+      messages.push(`Cleared ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s) from database`);
+      logActivity(currentSessionUser, 'Clear Device Data', `Cleared device logs + ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s) from DB`);
+    } else {
+      messages.push('No local teachers to clear');
+    }
+
+    return { success: true, message: messages.join('. ') + '.', cleared: allTeachers?.length || 0 };
+  } catch (err) {
+    console.error('Error clearing device data:', err);
     return { success: false, message: err.message };
   }
 });
