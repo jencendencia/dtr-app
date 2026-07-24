@@ -72,9 +72,32 @@ class ZktecoService {
 
   /**
    * Check if currently connected to a device.
+   * Also verifies the underlying TCP socket is alive.
    */
   isConnected() {
-    return this.connected && this.device !== null;
+    if (!this.connected || !this.device) return false;
+    // Verify the TCP socket is actually alive
+    try {
+      const socket = this.device.ztcp?.socket;
+      if (socket && (socket.destroyed || !socket.writable)) {
+        this.connected = false;
+        return false;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  /**
+   * Check if the underlying TCP socket is actually alive and writable.
+   */
+  isSocketAlive() {
+    try {
+      if (!this.device || !this.device.ztcp || !this.device.ztcp.socket) return false;
+      const socket = this.device.ztcp.socket;
+      return !socket.destroyed && socket.writable && !socket.closed;
+    } catch (_) {
+      return false;
+    }
   }
 
   /**

@@ -295,9 +295,20 @@ ipcMain.handle('delete-teacher', async (event, teacherId) => {
       return { success: false, message: 'Teacher not found.' };
     }
 
-    // Delete from device if connected
+    // Delete from device if connected (best effort -- don't let device errors block local deletion)
     if (zktecoService.isConnected()) {
-      await zktecoService.deleteUser(teacher.id);
+      try {
+        const deleteResult = await zktecoService.deleteUser(teacher.id);
+        if (!deleteResult.success) {
+          console.warn('[Delete Teacher] Device delete failed:', deleteResult.message);
+        }
+      } catch (deviceErr) {
+        console.warn('[Delete Teacher] Device delete error:', deviceErr.message);
+      }
+      // Check if connection survived the delete
+      if (!zktecoService.isConnected()) {
+        console.warn('[Delete Teacher] Device connection lost after delete');
+      }
     }
 
     db.prepare('DELETE FROM AttendanceLogs WHERE teacher_id = ?').run(teacherId);
@@ -316,6 +327,11 @@ ipcMain.handle('enroll-teacher-to-device', async (event, teacherId) => {
     if (!zktecoService.isConnected()) {
       return { success: false, message: 'Not connected to a device. Connect first.' };
     }
+    // Verify socket is actually alive before sending commands
+    if (!zktecoService.isSocketAlive()) {
+      await zktecoService.disconnect();
+      return { success: false, message: 'Device connection lost. Please reconnect to the device.' };
+    }
     const teacher = db.prepare('SELECT id, name, biometric_id, device_password FROM Teachers WHERE id = ?').get(teacherId);
     if (!teacher) {
       return { success: false, message: 'Teacher not found in database.' };
@@ -327,6 +343,11 @@ ipcMain.handle('enroll-teacher-to-device', async (event, teacherId) => {
     return result;
   } catch (err) {
     console.error('Error enrolling teacher to device:', err);
+    // If error suggests connection issue, clean up state
+    if (err.message && (err.message.includes('socket') || err.message.includes('connect') || err.message.includes('ECONNRESET') || err.message.includes('EPIPE') || err.message.includes('destroyed'))) {
+      await zktecoService.disconnect();
+      return { success: false, message: 'Device connection lost during enrollment. Please reconnect.' };
+    }
     return { success: false, message: err.message };
   }
 });
@@ -335,6 +356,11 @@ ipcMain.handle('enroll-all-teachers-to-device', async () => {
   try {
     if (!zktecoService.isConnected()) {
       return { success: false, message: 'Not connected to a device. Connect first.' };
+    }
+    // Verify socket is actually alive before sending commands
+    if (!zktecoService.isSocketAlive()) {
+      await zktecoService.disconnect();
+      return { success: false, message: 'Device connection lost. Please reconnect to the device.' };
     }
     const teachers = db.prepare('SELECT id, name, biometric_id, device_password FROM Teachers WHERE status = ? ORDER BY name ASC').all('active');
     if (teachers.length === 0) {
@@ -1054,12 +1080,16 @@ ipcMain.handle('clear-device-data', async () => {
   try {
     const messages = [];
 
-    // 1. Clear attendance logs on the physical device
-    const clearLogsResult = await zktecoService.clearAttendanceLog();
-    if (clearLogsResult.success) {
-      messages.push('Device attendance logs cleared');
-    } else {
-      messages.push(`Device log clear failed: ${clearLogsResult.message}`);
+    // 1. Clear attendance logs on the physical device (best effort)
+    try {
+      const clearLogsResult = await zktecoService.clearAttendanceLog();
+      if (clearLogsResult.success) {
+        messages.push('Device attendance logs cleared');
+      } else {
+        messages.push(`Device log clear failed: ${clearLogsResult.message}`);
+      }
+    } catch (logErr) {
+      messages.push(`Device log clear error: ${logErr.message}`);
     }
 
     // 2. Clear local DB (teachers + attendance logs)
