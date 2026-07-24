@@ -197,7 +197,7 @@ ipcMain.handle('login', async (event, username, password) => {
 
 ipcMain.handle('get-teachers', async () => {
   try {
-    const rows = db.prepare('SELECT * FROM Teachers ORDER BY name ASC').all();
+    const rows = db.prepare('SELECT * FROM Teachers ORDER BY biometric_id ASC').all();
     return rows;
   } catch (err) {
     console.error('Error fetching teachers:', err);

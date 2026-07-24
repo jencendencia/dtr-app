@@ -4,3 +4,6 @@ dist/
 *.db-wal
 *.db-shm
 build/icon.png
+
+# GitHub token config (auto-updater)
+github_token.json
