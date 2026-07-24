@@ -67,6 +67,39 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
   let rows = '';
   let totalUndertimeMins = 0;
 
+  // Pre-compute training blocks for spanning entries
+  const trainingBlocks = {};
+  {
+    let blockStart = 0;
+    let blockDesc = '';
+    for (let d = 1; d <= 31; d++) {
+      const ds = `${year}-${monthNum}-${String(d).padStart(2, '0')}`;
+      const h = holidays[ds];
+      if (h && h.type === 'training') {
+        const desc = h.description || 'Training';
+        if (blockStart === 0 || desc !== blockDesc) {
+          blockStart = d;
+          blockDesc = desc;
+        }
+        trainingBlocks[d] = { start: blockStart, description: desc };
+      } else {
+        blockStart = 0;
+        blockDesc = '';
+      }
+    }
+    const blockSpans = {};
+    for (let d = 1; d <= 31; d++) {
+      if (trainingBlocks[d]) {
+        const start = trainingBlocks[d].start;
+        if (!blockSpans[start]) blockSpans[start] = 0;
+        blockSpans[start]++;
+      }
+    }
+    for (const start in blockSpans) {
+      if (trainingBlocks[start]) trainingBlocks[start].span = blockSpans[start];
+    }
+  }
+
   for (let i = 1; i <= 31; i++) {
     const dow = getDayOfWeek(year, month, i);
     const isSat = dow === 6;
@@ -79,6 +112,7 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
     const holiday = holidays[dateStr];
     const isHoliday = holiday && holiday.type === 'holiday';
     const isSuspension = holiday && holiday.type === 'suspension';
+    const isTraining = holiday && holiday.type === 'training';
     const isHalfDay = holiday && holiday.is_half_day;
     const halfDayPeriod = holiday ? holiday.half_day_period : null;
 
@@ -125,6 +159,10 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
     } else if (isSuspension) {
       holidayCellLabel = 'Class Suspension';
       holidayStyle = 'font-style:italic;';
+    } else if (isTraining) {
+      const blockInfo = trainingBlocks[i];
+      holidayCellLabel = blockInfo ? blockInfo.description : 'Training';
+      holidayStyle = 'font-style:italic;';
     }
 
     // Calculate tardiness and undertime for this day
@@ -137,6 +175,24 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
       amOut = holidayCellLabel;
       pmIn = holidayCellLabel;
       pmOut = holidayCellLabel;
+      amInMins = null; amOutMins = null;
+      pmInMins = null; pmOutMins = null;
+    }
+    // Training: no undertime, spanning entry
+    else if (isTraining) {
+      dailyUndertime = 0;
+      const blockInfo = trainingBlocks[i];
+      const isFirstDay = blockInfo && blockInfo.start === i;
+      const span = blockInfo ? blockInfo.span : 1;
+      if (isFirstDay && span > 1) {
+        amIn = `__SPAN_${span}__`;
+        amOut = ''; pmIn = ''; pmOut = '';
+      } else if (!isFirstDay) {
+        amIn = '__SKIP__'; amOut = ''; pmIn = ''; pmOut = '';
+      } else {
+        amIn = '__COLSPAN__';
+        amOut = ''; pmIn = ''; pmOut = '';
+      }
       amInMins = null; amOutMins = null;
       pmInMins = null; pmOutMins = null;
     }
@@ -221,7 +277,19 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
 
     const specialStyle = holidayStyle || (isWeekend ? 'font-style:italic;' : '');
 
-    rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    if (amIn === '__SKIP__') {
+      // Continuation of multi-day training: skip time cells
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    } else if (amIn.startsWith('__SPAN_')) {
+      // First day of multi-day training: rowspan + colspan across all 4 time columns
+      const span = parseInt(amIn.replace('__SPAN_', '').replace('__', ''));
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td rowspan="${span}" colspan="4" style="font-weight:600;vertical-align:middle;text-align:center;">${holidayCellLabel}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    } else if (amIn === '__COLSPAN__') {
+      // Single day training: colspan across all 4 time columns
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td colspan="4" style="font-weight:600;text-align:center;">${holidayCellLabel}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    } else {
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+    }
   }
 
   const totalH = Math.floor(totalUndertimeMins / 60);

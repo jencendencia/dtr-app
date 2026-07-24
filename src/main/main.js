@@ -1455,7 +1455,7 @@ ipcMain.handle('delete-holiday', async (event, id) => {
   }
 });
 
-ipcMain.handle('get-holidays-for-dtr', async (event, month, year) => {
+ipcMain.handle('get-holidays-for-dtr', async (event, month, year, teacherId) => {
   try {
     const monthStr = String(month).padStart(2, '0');
     const startDate = `${year}-${monthStr}-01`;
@@ -1471,10 +1471,114 @@ ipcMain.handle('get-holidays-for-dtr', async (event, month, year) => {
         half_day_period: r.half_day_period
       };
     });
+
+    // If teacherId provided, also include training dates
+    if (teacherId) {
+      const trainings = db.prepare(
+        'SELECT start_date, end_date, description FROM Trainings WHERE teacher_id = ? AND start_date <= ? AND end_date >= ?'
+      ).all(teacherId, endDate, startDate);
+      for (const t of trainings) {
+        // Expand date range into individual dates
+        const tStart = new Date(t.start_date);
+        const tEnd = new Date(t.end_date);
+        for (let d = new Date(tStart); d <= tEnd; d.setDate(d.getDate() + 1)) {
+          const ds = d.toISOString().split('T')[0];
+          if (ds >= startDate && ds <= endDate) {
+            holidayMap[ds] = { type: 'training', is_half_day: 0, half_day_period: null, description: t.description };
+          }
+        }
+      }
+    }
+
     return holidayMap;
   } catch (err) {
     console.error('Error fetching holidays for DTR:', err);
     return {};
+  }
+});
+
+// ─── Training Management ─────────────────────────────────────
+
+ipcMain.handle('add-training', async (event, training) => {
+  try {
+    const { teacher_id, start_date, end_date, description } = training;
+    if (!teacher_id) return { success: false, message: 'Teacher ID is required.' };
+    if (!start_date || !end_date) return { success: false, message: 'Start and end dates are required.' };
+    if (start_date > end_date) return { success: false, message: 'Start date must be before or equal to end date.' };
+
+    // Check for overlapping trainings for the same teacher
+    const overlap = db.prepare(
+      'SELECT id, start_date, end_date FROM Trainings WHERE teacher_id = ? AND start_date <= ? AND end_date >= ?'
+    ).get(teacher_id, end_date, start_date);
+    if (overlap) {
+      return { success: false, message: `Overlapping training exists (${overlap.start_date} to ${overlap.end_date}).` };
+    }
+
+    const result = db.prepare('INSERT INTO Trainings (teacher_id, start_date, end_date, description) VALUES (?, ?, ?, ?)').run(teacher_id, start_date, end_date, description || '');
+    logActivity(currentSessionUser, 'Add Training', `Registered training for teacher ${teacher_id}: ${start_date} to ${end_date}`);
+    return { success: true, id: result.lastInsertRowid };
+  } catch (err) {
+    console.error('Error adding training:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('get-trainings-for-teacher', async (event, teacherId, month, year) => {
+  try {
+    let rows;
+    if (month && year) {
+      const monthStr = String(month).padStart(2, '0');
+      const startDate = `${year}-${monthStr}-01`;
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+      const endDate = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+      rows = db.prepare('SELECT * FROM Trainings WHERE teacher_id = ? AND start_date <= ? AND end_date >= ? ORDER BY start_date ASC').all(teacherId, endDate, startDate);
+    } else {
+      rows = db.prepare('SELECT * FROM Trainings WHERE teacher_id = ? ORDER BY start_date ASC').all(teacherId);
+    }
+    return rows;
+  } catch (err) {
+    console.error('Error fetching trainings:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('update-training', async (event, id, updates) => {
+  try {
+    const { start_date, end_date, description } = updates;
+    if (!start_date || !end_date) return { success: false, message: 'Start and end dates are required.' };
+    if (start_date > end_date) return { success: false, message: 'Start date must be before or equal to end date.' };
+
+    const existing = db.prepare('SELECT teacher_id FROM Trainings WHERE id = ?').get(id);
+    if (!existing) return { success: false, message: 'Training not found.' };
+
+    // Check for overlapping trainings for the same teacher (excluding this one)
+    const overlap = db.prepare(
+      'SELECT id, start_date, end_date FROM Trainings WHERE teacher_id = ? AND id != ? AND start_date <= ? AND end_date >= ?'
+    ).get(existing.teacher_id, id, end_date, start_date);
+    if (overlap) {
+      return { success: false, message: `Overlapping training exists (${overlap.start_date} to ${overlap.end_date}).` };
+    }
+
+    db.prepare('UPDATE Trainings SET start_date = ?, end_date = ?, description = ? WHERE id = ?').run(start_date, end_date, description || '', id);
+    logActivity(currentSessionUser, 'Update Training', `Updated training ${id}: ${start_date} to ${end_date}`);
+    return { success: true };
+  } catch (err) {
+    console.error('Error updating training:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('delete-training', async (event, id) => {
+  try {
+    const row = db.prepare('SELECT teacher_id, start_date, end_date FROM Trainings WHERE id = ?').get(id);
+    db.prepare('DELETE FROM Trainings WHERE id = ?').run(id);
+    if (row) {
+      logActivity(currentSessionUser, 'Delete Training', `Deleted training for teacher ${row.teacher_id}: ${row.start_date} to ${row.end_date}`);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Error deleting training:', err);
+    return { success: false, message: err.message };
   }
 });
 

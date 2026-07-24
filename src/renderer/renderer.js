@@ -734,6 +734,7 @@ function getSearchTeacherView() {
         <!-- Inner tabs for Teacher details -->
         <div class="teacher-tabs" style="display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:5px;">
           <button class="teacher-tab-btn active" id="tab-teacher-attendance" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid var(--accent);cursor:pointer;font-weight:600;color:var(--text);">Attendance Records</button>
+          <button class="teacher-tab-btn" id="tab-teacher-training" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:500;color:var(--text-muted);">Training Periods</button>
           <button class="teacher-tab-btn" id="tab-teacher-config" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-weight:500;color:var(--text-muted);">Specific Time Config</button>
         </div>
 
@@ -747,6 +748,32 @@ function getSearchTeacherView() {
           <h4 style="margin-bottom:15px;">Attendance Records</h4>
           <div id="teacher-logs-container" style="max-height:400px;overflow-y:auto;">
             <!-- Logs will be inserted here -->
+          </div>
+        </div>
+
+        <!-- Training Periods Tab Panel -->
+        <div id="teacher-training-panel" style="display:none;">
+          <h4 style="margin-top:0;margin-bottom:10px;">Register Training Period</h4>
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:15px;">Register dates when this teacher is attending training. Teachers cannot login/logout during training periods.</p>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:15px;">
+            <div class="form-group">
+              <label style="font-weight:500;font-size:13px;">Start Date</label>
+              <input type="date" id="training-start-date" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+            </div>
+            <div class="form-group">
+              <label style="font-weight:500;font-size:13px;">End Date</label>
+              <input type="date" id="training-end-date" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+            </div>
+            <div class="form-group" style="flex:1;min-width:150px;">
+              <label style="font-weight:500;font-size:13px;">Description</label>
+              <input type="text" id="training-description" placeholder="e.g. Division Training" style="padding:8px;border-radius:6px;border:1px solid var(--border);width:100%;">
+            </div>
+            <button id="btn-add-training" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;height:36px;">Register</button>
+          </div>
+          <span id="training-status" style="display:block;margin-bottom:15px;font-size:13px;"></span>
+          <h4 style="margin-bottom:10px;">Registered Training Periods</h4>
+          <div id="training-list-container" style="max-height:250px;overflow-y:auto;">
+            <p style="color:var(--text-muted);font-size:13px;font-style:italic;">No training periods registered.</p>
           </div>
         </div>
 
@@ -1844,7 +1871,7 @@ async function setupDtrView() {
     const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
     const logs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), parseInt(month), parseInt(year));
     // Fetch holidays for the month
-    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year);
+    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year, parseInt(teacherId));
     const dtrHtml = generateDTRHtml(select.options[select.selectedIndex].text, monthNames[parseInt(month)], year, logs, freshSchedule, holidays);
     const cols = columnSelect.value;
     if (cols === '2') {
@@ -1860,14 +1887,13 @@ async function setupDtrView() {
     const [year, month] = monthVal.split('-');
     // Fetch only ACTIVE teachers before generating all DTRs
     const freshTeachers = await ipcRenderer.invoke('get-active-teachers');
-    // Fetch holidays once for all teachers (same month)
-    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year);
     const cols = columnSelect.value;
     let allHtml = '';
     for (const t of freshTeachers) {
       const logs = await ipcRenderer.invoke('get-attendance', t.id, parseInt(month), parseInt(year));
-      // Fetch each teacher's individual effective time schedule
+      // Fetch each teacher's individual effective time schedule and holidays (including training)
       const teacherSchedule = await ipcRenderer.invoke('get-effective-schedule', t.id);
+      const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year, t.id);
       const dtrHtml = generateDTRHtml(t.name, monthNames[parseInt(month)], year, logs, teacherSchedule, holidays);
       if (cols === '2') {
         allHtml += `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
@@ -1887,42 +1913,38 @@ async function setupSearchTeacherView() {
 
   // Tabs selectors
   const tabAttendance = document.getElementById('tab-teacher-attendance');
+  const tabTraining = document.getElementById('tab-teacher-training');
   const tabConfig = document.getElementById('tab-teacher-config');
   const panelAttendance = document.getElementById('teacher-attendance-panel');
+  const panelTraining = document.getElementById('teacher-training-panel');
   const panelConfig = document.getElementById('teacher-config-panel');
 
   function switchTeacherTab(tabName) {
-    if (tabName === 'attendance') {
-      tabAttendance.classList.add('active');
-      tabAttendance.style.borderBottom = '2px solid var(--accent)';
-      tabAttendance.style.fontWeight = '600';
-      tabAttendance.style.color = 'var(--text)';
-      
-      tabConfig.classList.remove('active');
-      tabConfig.style.borderBottom = '2px solid transparent';
-      tabConfig.style.fontWeight = '500';
-      tabConfig.style.color = 'var(--text-muted)';
-      
-      panelAttendance.style.display = '';
-      panelConfig.style.display = 'none';
-    } else {
-      tabConfig.classList.add('active');
-      tabConfig.style.borderBottom = '2px solid var(--accent)';
-      tabConfig.style.fontWeight = '600';
-      tabConfig.style.color = 'var(--text)';
-      
-      tabAttendance.classList.remove('active');
-      tabAttendance.style.borderBottom = '2px solid transparent';
-      tabAttendance.style.fontWeight = '500';
-      tabAttendance.style.color = 'var(--text-muted)';
-      
-      panelAttendance.style.display = 'none';
-      panelConfig.style.display = '';
+    const tabs = [
+      { btn: tabAttendance, panel: panelAttendance, name: 'attendance' },
+      { btn: tabTraining, panel: panelTraining, name: 'training' },
+      { btn: tabConfig, panel: panelConfig, name: 'config' }
+    ];
+    for (const t of tabs) {
+      if (t.name === tabName) {
+        t.btn.classList.add('active');
+        t.btn.style.borderBottom = '2px solid var(--accent)';
+        t.btn.style.fontWeight = '600';
+        t.btn.style.color = 'var(--text)';
+        t.panel.style.display = '';
+      } else {
+        t.btn.classList.remove('active');
+        t.btn.style.borderBottom = '2px solid transparent';
+        t.btn.style.fontWeight = '500';
+        t.btn.style.color = 'var(--text-muted)';
+        t.panel.style.display = 'none';
+      }
     }
   }
 
-  if (tabAttendance && tabConfig) {
+  if (tabAttendance && tabTraining && tabConfig) {
     tabAttendance.addEventListener('click', () => switchTeacherTab('attendance'));
+    tabTraining.addEventListener('click', () => { switchTeacherTab('training'); loadTrainings(); });
     tabConfig.addEventListener('click', () => switchTeacherTab('config'));
   }
 
@@ -2046,13 +2068,14 @@ async function setupSearchTeacherView() {
     currentYear = parseInt(year);
     currentMonth = parseInt(month);
     await loadTeacherLogs(parseInt(teacherId), month, year);
+    await loadTrainings();
   });
 
   // Save specific schedule
   // Get effective schedule including holiday info for this teacher
   async function getEffectiveScheduleWithHolidays(teacherId, month, year) {
     const schedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
-    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year);
+    const holidays = await ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year, parseInt(teacherId));
     return { schedule, holidays };
   }
 
@@ -2150,6 +2173,195 @@ async function setupSearchTeacherView() {
     await loadTeacherLogs(currentSearchTeacherId, month, year);
   });
 
+  // ── Training Periods ──
+
+  async function loadTrainings() {
+    if (!currentSearchTeacherId) return;
+    const container = document.getElementById('training-list-container');
+    const monthVal = document.getElementById('search-month-select').value;
+    const [year, month] = monthVal.split('-');
+    const trainings = await ipcRenderer.invoke('get-trainings-for-teacher', parseInt(currentSearchTeacherId), parseInt(month), parseInt(year));
+
+    if (trainings.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;font-style:italic;">No training periods registered for this month.</p>';
+      return;
+    }
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+    html += '<thead><tr style="background:var(--surface-alt);">';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Start Date</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">End Date</th>';
+    html += '<th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Description</th>';
+    html += '<th style="padding:8px;text-align:center;border-bottom:1px solid var(--border);">Action</th>';
+    html += '</tr></thead><tbody>';
+
+    trainings.forEach(t => {
+      html += `<tr style="border-bottom:1px solid var(--border);">`;
+      html += `<td style="padding:8px;">${t.start_date}</td>`;
+      html += `<td style="padding:8px;">${t.end_date}</td>`;
+      html += `<td style="padding:8px;color:var(--text-muted);">${t.description || '—'}</td>`;
+      html += `<td style="padding:8px;text-align:center;white-space:nowrap;">`;
+      html += `<button class="btn-edit-training" data-training-id="${t.id}" data-start="${t.start_date}" data-end="${t.end_date}" data-desc="${(t.description || '').replace(/"/g, '&quot;')}" style="padding:4px 10px;background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.3);border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px;">Edit</button>`;
+      html += `<button class="btn-delete-training" data-training-id="${t.id}" style="padding:4px 10px;background:rgba(239,68,68,0.1);color:var(--danger);border:1px solid rgba(239,68,68,0.2);border-radius:4px;cursor:pointer;font-size:11px;">Delete</button>`;
+      html += `</td>`;
+      html += `</tr>`;
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    // Attach edit handlers
+    container.querySelectorAll('.btn-edit-training').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const trainingId = parseInt(btn.getAttribute('data-training-id'));
+        const startDate = btn.getAttribute('data-start');
+        const endDate = btn.getAttribute('data-end');
+        const desc = btn.getAttribute('data-desc');
+
+        const modalHtml = `
+          <div id="edit-training-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;">
+            <div style="background:var(--modal-bg);color:var(--modal-text);padding:20px;border-radius:8px;max-width:420px;width:90%;border:1px solid var(--border);">
+              <h3 style="margin-top:0;">Edit Training Period</h3>
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <div class="form-group">
+                  <label style="font-weight:500;font-size:13px;">Start Date</label>
+                  <input type="date" id="edit-training-start" value="${startDate}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+                </div>
+                <div class="form-group">
+                  <label style="font-weight:500;font-size:13px;">End Date</label>
+                  <input type="date" id="edit-training-end" value="${endDate}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+                </div>
+                <div class="form-group">
+                  <label style="font-weight:500;font-size:13px;">Description</label>
+                  <input type="text" id="edit-training-desc" value="${desc}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+                </div>
+                <span id="edit-training-status" style="font-size:13px;"></span>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                  <button id="edit-training-cancel" style="padding:8px 16px;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;cursor:pointer;">Cancel</button>
+                  <button id="edit-training-save" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const modal = document.getElementById('edit-training-modal');
+
+        document.getElementById('edit-training-cancel').addEventListener('click', () => modal.remove());
+
+        document.getElementById('edit-training-save').addEventListener('click', async () => {
+          const newStart = document.getElementById('edit-training-start').value;
+          const newEnd = document.getElementById('edit-training-end').value;
+          const newDesc = document.getElementById('edit-training-desc').value.trim();
+          const statusEl = document.getElementById('edit-training-status');
+
+          if (!newStart || !newEnd) {
+            statusEl.textContent = 'Please select start and end dates.';
+            statusEl.style.color = '#ef4444';
+            return;
+          }
+          if (newStart > newEnd) {
+            statusEl.textContent = 'Start date must be before or equal to end date.';
+            statusEl.style.color = '#ef4444';
+            return;
+          }
+
+          const res = await ipcRenderer.invoke('update-training', trainingId, {
+            start_date: newStart,
+            end_date: newEnd,
+            description: newDesc
+          });
+
+          if (res.success) {
+            modal.remove();
+            showToast('Training period updated');
+            loadTrainings();
+            if (currentSearchTeacherId) {
+              const mv = document.getElementById('search-month-select').value;
+              const [y, m] = mv.split('-');
+              await loadTeacherLogs(currentSearchTeacherId, m, y);
+            }
+          } else {
+            statusEl.textContent = 'Error: ' + res.message;
+            statusEl.style.color = '#ef4444';
+          }
+        });
+      });
+    });
+
+    // Attach delete handlers
+    container.querySelectorAll('.btn-delete-training').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const trainingId = parseInt(btn.getAttribute('data-training-id'));
+        const confirmed = await showConfirm('Delete this training period?');
+        if (!confirmed) return;
+        const res = await ipcRenderer.invoke('delete-training', trainingId);
+        if (res.success) {
+          showToast('Training period deleted');
+          loadTrainings();
+          // Also refresh attendance logs if on that tab
+          if (currentSearchTeacherId) {
+            const mv = document.getElementById('search-month-select').value;
+            const [y, m] = mv.split('-');
+            await loadTeacherLogs(currentSearchTeacherId, m, y);
+          }
+        } else {
+          showToast('Error: ' + res.message);
+        }
+      });
+    });
+  }
+
+  // Add training button
+  document.getElementById('btn-add-training').addEventListener('click', async () => {
+    if (!currentSearchTeacherId) {
+      showToast('Please select a teacher first');
+      return;
+    }
+
+    const startDate = document.getElementById('training-start-date').value;
+    const endDate = document.getElementById('training-end-date').value;
+    const description = document.getElementById('training-description').value.trim();
+    const statusEl = document.getElementById('training-status');
+
+    if (!startDate || !endDate) {
+      statusEl.textContent = 'Please select start and end dates.';
+      statusEl.style.color = '#ef4444';
+      setTimeout(() => statusEl.textContent = '', 4000);
+      return;
+    }
+    if (startDate > endDate) {
+      statusEl.textContent = 'Start date must be before or equal to end date.';
+      statusEl.style.color = '#ef4444';
+      setTimeout(() => statusEl.textContent = '', 4000);
+      return;
+    }
+
+    const res = await ipcRenderer.invoke('add-training', {
+      teacher_id: parseInt(currentSearchTeacherId),
+      start_date: startDate,
+      end_date: endDate,
+      description
+    });
+
+    if (res.success) {
+      statusEl.textContent = 'Training period registered successfully!';
+      statusEl.style.color = '#10b981';
+      document.getElementById('training-start-date').value = '';
+      document.getElementById('training-end-date').value = '';
+      document.getElementById('training-description').value = '';
+      loadTrainings();
+      // Refresh attendance logs to show training days
+      const mv = document.getElementById('search-month-select').value;
+      const [y, m] = mv.split('-');
+      await loadTeacherLogs(currentSearchTeacherId, m, y);
+    } else {
+      statusEl.textContent = 'Error: ' + res.message;
+      statusEl.style.color = '#ef4444';
+    }
+    setTimeout(() => statusEl.textContent = '', 4000);
+  });
+
 }
 
 function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays) {
@@ -2157,7 +2369,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
   if (!timeSchedule) {
     // Fallback if called without schedule (during initial page render)
     ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId)).then(sched => {
-      ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year).then(hols => {
+      ipcRenderer.invoke('get-holidays-for-dtr', parseInt(month), year, parseInt(teacherId)).then(hols => {
         displayTeacherLogs(logs, teacherId, month, year, sched, hols);
       });
     });
@@ -2190,6 +2402,42 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
 
   // Process each day
   const daysInMonth = new Date(year, parseInt(month), 0).getDate();
+
+  // Pre-compute training blocks for spanning entries
+  const trainingBlocks = {}; // { day: { description, span } }
+  {
+    let blockStart = 0;
+    let blockDesc = '';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ds = `${year}-${monthNum}-${String(d).padStart(2, '0')}`;
+      const h = holidays ? holidays[ds] : null;
+      if (h && h.type === 'training') {
+        const desc = h.description || 'Training';
+        if (blockStart === 0 || desc !== blockDesc) {
+          // Start new block
+          blockStart = d;
+          blockDesc = desc;
+        }
+        trainingBlocks[d] = { start: blockStart, description: desc };
+      } else {
+        blockStart = 0;
+        blockDesc = '';
+      }
+    }
+    // Set span count for each block start
+    const blockSpans = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (trainingBlocks[d]) {
+        const start = trainingBlocks[d].start;
+        if (!blockSpans[start]) blockSpans[start] = 0;
+        blockSpans[start]++;
+      }
+    }
+    for (const start in blockSpans) {
+      if (trainingBlocks[start]) trainingBlocks[start].span = blockSpans[start];
+    }
+  }
+
   for (let i = 1; i <= daysInMonth; i++) {
     const dayLogs = logsByDay[i] || [];
     
@@ -2198,6 +2446,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
     const holiday = holidays ? holidays[dateStr] : null;
     const isHoliday = holiday && holiday.type === 'holiday';
     const isSuspension = holiday && holiday.type === 'suspension';
+    const isTraining = holiday && holiday.type === 'training';
     const isHalfDay = holiday && holiday.is_half_day;
     const halfDayPeriod = holiday ? holiday.half_day_period : null;
 
@@ -2280,6 +2529,26 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
           if (pmOutMins < sPmOutStart) dailyUndertime += (sPmOutStart - pmOutMins);
         }
       }
+    } else if (isTraining) {
+      const blockInfo = trainingBlocks[i];
+      const isFirstDay = blockInfo && blockInfo.start === i;
+      const span = blockInfo ? blockInfo.span : 1;
+      holidayCellLabel = blockInfo ? blockInfo.description : 'Training';
+      rowStyle = 'background:#dbeafe;';
+      if (isFirstDay && span > 1) {
+        // First day of multi-day block: rowspan for rows, colspan for all 4 time columns
+        amIn = `__SPAN_${span}__`;
+        amOut = ''; pmIn = ''; pmOut = '';
+      } else if (!isFirstDay) {
+        // Continuation day: skip cells (covered by rowspan)
+        amIn = '__SKIP__'; amOut = ''; pmIn = ''; pmOut = '';
+      } else {
+        // Single day training: span all 4 time columns
+        amIn = `__COLSPAN__`;
+        amOut = ''; pmIn = ''; pmOut = '';
+      }
+      amInMins = null; amOutMins = null;
+      pmInMins = null; pmOutMins = null;
     } else {
       // Normal day evaluation
       if (amInMins !== null && amOutMins === null && pmInMins === null && pmOutMins !== null) {
@@ -2307,21 +2576,52 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
       utStr = (utHours > 0 ? utHours + 'h ' : '') + (utMins > 0 ? utMins + 'm' : '');
     }
 
-    const canSelect = !(isHoliday || (isSuspension && !isHalfDay));
+    const canSelect = !(isHoliday || (isSuspension && !isHalfDay) || isTraining);
 
     html += `<tr style="border-bottom:1px solid #e5e7eb;${rowStyle}">
       <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;"><input type="checkbox" class="day-checkbox" data-day="${i}" ${canSelect ? '' : 'disabled'} style="cursor:${canSelect ? 'pointer' : 'not-allowed'};"></td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${dayDisplay}</td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amIn}</td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amOut}</td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmIn}</td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmOut}</td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;font-weight:bold;color:#ef4444;">${utStr}</td>
-      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
-        <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
-        <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
-      </td>
-    </tr>`;
+      <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${dayDisplay}</td>`;
+
+    if (amIn === '__SKIP__') {
+      // Continuation of multi-day training block: skip time cells (covered by rowspan)
+      html += `<td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${utStr}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
+          <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
+          <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    } else if (amIn.startsWith('__SPAN_')) {
+      // First day of multi-day training block: rowspan + colspan across all 4 time columns
+      const span = parseInt(amIn.replace('__SPAN_', '').replace('__', ''));
+      html += `<td rowspan="${span}" colspan="4" style="padding:8px;text-align:center;border:1px solid #e5e7eb;font-weight:600;vertical-align:middle;background:#dbeafe;">${holidayCellLabel}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${utStr}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
+          <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
+          <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    } else if (amIn === '__COLSPAN__') {
+      // Single day training: colspan across all 4 time columns
+      html += `<td colspan="4" style="padding:8px;text-align:center;border:1px solid #e5e7eb;font-weight:600;background:#dbeafe;">${holidayCellLabel}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${utStr}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
+          <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
+          <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    } else {
+      // Normal row with all cells
+      html += `<td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amIn}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${amOut}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmIn}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">${pmOut}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;font-weight:bold;color:#ef4444;">${utStr}</td>
+        <td style="padding:8px;text-align:center;border:1px solid #e5e7eb;">
+          <button class="edit-day-btn" data-day="${i}" style="padding:2px 6px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;margin-right:2px;font-size:11px;">Edit</button>
+          <button class="delete-day-btn" data-day="${i}" style="padding:2px 6px;background:#ef4444;color:white;border:none;border-radius:3px;cursor:pointer;font-size:11px;">Delete</button>
+        </td>
+      </tr>`;
+    }
   }
 
   html += '</tbody></table>';
@@ -2341,6 +2641,10 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         showToast('Cannot edit logs on a full-day suspension');
         return;
       }
+      if (holiday && holiday.type === 'training') {
+        showToast('Cannot edit logs on a training day');
+        return;
+      }
       const dayLogs = logsByDay[day] || [];
       showEditDayModal(day, dayLogs, teacherId, logsByDay, currentMonth, currentYear);
     });
@@ -2355,6 +2659,10 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         showToast('Cannot delete logs on a holiday');
         return;
       }
+      if (holiday && holiday.type === 'training') {
+        showToast('Cannot delete logs on a training day');
+        return;
+      }
       if (await showConfirm(`Are you sure you want to delete all logs for day ${day}?`)) {
         const dayLogs = logsByDay[day] || [];
         for (const log of dayLogs) {
@@ -2363,7 +2671,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         showToast('Logs deleted successfully');
         const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
         const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
-        const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear);
+        const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear, parseInt(teacherId));
         displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
       }
     });
@@ -2419,7 +2727,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
       showToast('Logs deleted successfully');
       const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
       const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
-      const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear);
+      const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear, parseInt(teacherId));
       displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
     }
   });
@@ -2684,7 +2992,7 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
           showToast('Time updated successfully');
           const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
           const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
-          const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear);
+          const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear, parseInt(teacherId));
           displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
         } else {
           showToast('Error: ' + res.message);
