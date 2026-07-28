@@ -1461,12 +1461,13 @@ ipcMain.handle('get-holidays-for-dtr', async (event, month, year, teacherId) => 
     const startDate = `${year}-${monthStr}-01`;
     const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
     const endDate = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
-    const rows = db.prepare('SELECT date, type, is_half_day, half_day_period FROM Holidays WHERE date >= ? AND date <= ? ORDER BY date ASC').all(startDate, endDate);
-    // Return as a map: { '2026-06-15': { type: 'holiday', is_half_day: 0, half_day_period: null }, ... }
+    const rows = db.prepare('SELECT date, type, description, is_half_day, half_day_period FROM Holidays WHERE date >= ? AND date <= ? ORDER BY date ASC').all(startDate, endDate);
+    // Return as a map: { '2026-06-15': { type: 'holiday', description: '...', is_half_day: 0, half_day_period: null }, ... }
     const holidayMap = {};
     rows.forEach(r => {
       holidayMap[r.date] = {
         type: r.type,
+        description: r.description,
         is_half_day: r.is_half_day,
         half_day_period: r.half_day_period
       };

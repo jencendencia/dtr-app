@@ -105,8 +105,6 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
     const isSat = dow === 6;
     const isSun = dow === 0;
     const isWeekend = isSat || isSun;
-    const dayLabel = isSat ? 'Sat' : (isSun ? 'Sun' : '');
-
     // Check if this day is a holiday/suspension
     const dateStr = `${year}-${monthNum}-${String(i).padStart(2, '0')}`;
     const holiday = holidays[dateStr];
@@ -148,33 +146,34 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
 
     // ─── Holiday / Suspension Display Logic ───────────────────
     let dayDisplay = `${i}`;
-    if (dayLabel) dayDisplay += ` - ${dayLabel}`;
 
     let holidayStyle = '';
     let holidayCellLabel = '';
 
     if (isHoliday) {
-      holidayCellLabel = 'Holiday';
+      holidayCellLabel = holiday.description || 'Holiday';
       holidayStyle = 'font-style:italic;';
     } else if (isSuspension) {
-      holidayCellLabel = 'Class Suspension';
+      holidayCellLabel = holiday.description || 'Class Suspension';
       holidayStyle = 'font-style:italic;';
     } else if (isTraining) {
       const blockInfo = trainingBlocks[i];
       holidayCellLabel = blockInfo ? blockInfo.description : 'Training';
       holidayStyle = 'font-style:italic;';
+    } else if (isSat) {
+      holidayCellLabel = 'Saturday';
+    } else if (isSun) {
+      holidayCellLabel = 'Sunday';
     }
 
     // Calculate tardiness and undertime for this day
     let dailyUndertime = 0;
 
-    // Full-day holiday/suspension: no undertime, show label in time cells
+    // Full-day holiday/suspension: no undertime, span label across all columns
     if (isHoliday || (isSuspension && !isHalfDay)) {
       dailyUndertime = 0;
-      amIn = holidayCellLabel;
-      amOut = holidayCellLabel;
-      pmIn = holidayCellLabel;
-      pmOut = holidayCellLabel;
+      amIn = '__COLSPAN__';
+      amOut = ''; pmIn = ''; pmOut = '';
       amInMins = null; amOutMins = null;
       pmInMins = null; pmOutMins = null;
     }
@@ -230,6 +229,14 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
         }
       }
     }
+    // Weekend: no undertime, span label across all columns
+    else if (isWeekend) {
+      dailyUndertime = 0;
+      amIn = '__COLSPAN__';
+      amOut = ''; pmIn = ''; pmOut = '';
+      amInMins = null; amOutMins = null;
+      pmInMins = null; pmOutMins = null;
+    }
     // Normal day (not a holiday/suspension)
     else if (!isWeekend && (amIn || amOut || pmIn || pmOut)) {
       // Rule 3: AM In exists, no AM Out, no PM In, but PM Out exists → absent whole day (8 hours)
@@ -275,18 +282,18 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
       totalUndertimeMins += dailyUndertime;
     }
 
-    const specialStyle = holidayStyle || (isWeekend ? 'font-style:italic;' : '');
+    const specialStyle = holidayStyle || '';
 
     if (amIn === '__SKIP__') {
-      // Continuation of multi-day training: skip time cells
-      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+      // Continuation of multi-day training: rowspan covers time+undertime columns
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td></tr>`;
     } else if (amIn.startsWith('__SPAN_')) {
-      // First day of multi-day training: rowspan + colspan across all 4 time columns
+      // First day of multi-day training: rowspan + colspan across all time + undertime columns
       const span = parseInt(amIn.replace('__SPAN_', '').replace('__', ''));
-      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td rowspan="${span}" colspan="4" style="font-weight:600;vertical-align:middle;text-align:center;">${holidayCellLabel}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td rowspan="${span}" colspan="6" style="vertical-align:middle;text-align:center;">${holidayCellLabel}</td></tr>`;
     } else if (amIn === '__COLSPAN__') {
-      // Single day training: colspan across all 4 time columns
-      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td colspan="4" style="font-weight:600;text-align:center;">${holidayCellLabel}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
+      // Single day training or full-day holiday/suspension: colspan across all time + undertime columns
+      rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td colspan="6" style="text-align:center;">${holidayCellLabel}</td></tr>`;
     } else {
       rows += `<tr style="${specialStyle}"><td>${dayDisplay}</td><td>${amIn}</td><td>${amOut}</td><td class="thick-col">${pmIn}</td><td class="thick-col">${pmOut}</td><td>${utHours}</td><td>${utMins}</td></tr>`;
     }
@@ -311,9 +318,9 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
       <div class="info-grid">
         <div class="field">
           <span>For the month of</span>
-          <span style="border-bottom:1px solid #000;width:120px;text-align:center;">${month}</span>
+          <span style="border-bottom:1px dashed #000;width:120px;text-align:center;">${month}</span>
           <span>, 20</span>
-          <span style="border-bottom:1px solid #000;width:40px;text-align:center;">${year.substring(2)}</span>
+          <span style="border-bottom:1px dashed #000;width:40px;text-align:center;">${year.substring(2)}</span>
         </div>
       </div>
       <div class="info-grid" style="align-items:flex-start;">
@@ -322,14 +329,23 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
           <span style="text-align:right;">and departure</span>
         </div>
         <div class="field" style="flex-direction:column;width:55%;">
-          <div><span>Regular Days</span><span style="border-bottom:1px solid #000;display:inline-block;width:100px;"></span></div>
-          <div><span>Saturdays</span><span style="border-bottom:1px solid #000;display:inline-block;width:115px;"></span></div>
+          <div><span>Regular Days</span><span style="border-bottom:1px dashed #000;display:inline-block;width:100px;"></span></div>
+          <div><span>Saturdays</span><span style="border-bottom:1px dashed #000;display:inline-block;width:115px;"></span></div>
         </div>
       </div>
       <table class="dtr-table">
+        <colgroup>
+          <col style="width:12%">
+          <col style="width:15%">
+          <col style="width:15%">
+          <col style="width:15%">
+          <col style="width:15%">
+          <col style="width:14%">
+          <col style="width:14%">
+        </colgroup>
         <thead>
-          <tr><th rowspan="2">Days</th><th colspan="2">A. M.</th><th colspan="2" class="thick-col">P. M.</th><th colspan="2">UNDERTIME</th></tr>
-          <tr><th>ARRIVAL</th><th>DEPAR-<br>TURE</th><th class="thick-col">ARRIVAL</th><th class="thick-col">DEPAR-<br>TURE</th><th>Hours</th><th>Minutes</th></tr>
+          <tr><th rowspan="2">Days</th><th colspan="2" style="font-weight:bold;">A.M.</th><th colspan="2" class="thick-col" style="font-weight:bold;">P.M.</th><th colspan="2" style="font-weight:bold;">Undertime</th></tr>
+          <tr><th>Arrival</th><th>Departure</th><th class="thick-col">Arrival</th><th class="thick-col">Departure</th><th>Hours</th><th>Minutes</th></tr>
         </thead>
         <tbody>
           ${rows}
@@ -337,14 +353,14 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
         </tbody>
       </table>
       <div class="certify-text">I CERTIFY on my honor that the above is a true and correct report of the hours of work performed, record of which was made daily at the time of arrival and departure from office.</div>
-      <div style="margin-top:5px;margin-left:auto;margin-right:auto;width:250px;text-align:center;">
-        <div style="border-bottom:1px solid #000;height:25px;margin-bottom:3px;"></div>
+      <div style="margin-top:5px;width:100%;text-align:center;">
         <div style="font-weight:bold;font-size:12px;text-transform:uppercase;">${name}</div>
+        <div style="border-bottom:1px dashed #000;height:5px;width:100%;"></div>
       </div>
       <div style="text-align:left;font-size:12px;font-style:italic;margin-top:15px;margin-bottom:5px;">VERIFIED as to the prescribed office hours:</div>
-      <div style="margin-top:25px;margin-left:auto;margin-right:auto;width:250px;text-align:center;position:relative;">
+      <div style="margin-top:25px;width:100%;text-align:center;position:relative;">
         ${principalSignature ? `<img src="${principalSignature}" style="max-height:60px;max-width:200px;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:1;">` : ''}
-        <div style="font-weight:bold;font-size:14px;position:relative;z-index:2;padding-bottom:2px;">${principalName}</div>
+        <div style="font-weight:bold;font-size:14px;position:relative;z-index:2;">${principalName}</div>
         <div class="in-charge-line" style="width:100%;">${principalPosition || 'In-Charge'}</div>
       </div>
       <div class="instructions-text">(See Instructions on back)</div>

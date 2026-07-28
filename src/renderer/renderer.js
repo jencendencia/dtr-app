@@ -7,6 +7,19 @@ let currentTeacherId = null;
 let currentMonth = null;
 let currentYear = null;
 
+function getPrevMonthValue() {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth(); // 0-11
+  month--;
+  if (month < 0) {
+    month = 11;
+    year--;
+  }
+  const m = String(month + 1).padStart(2, '0');
+  return `${year}-${m}`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   applyBranding();
@@ -690,9 +703,9 @@ function getDtrView() {
       <div class="dashboard-header"><h1>Print DTR</h1><p>Generate and print Civil Service Form No. 48</p></div>
       <div class="card" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <select id="teacher-select" style="padding:8px;border-radius:6px;border:1px solid var(--border);min-width:150px;"><option value="">Select Teacher</option></select>
-        <input type="month" id="month-select" value="2026-06" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+        <input type="month" id="month-select" value="${getPrevMonthValue()}" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
         <button id="btn-generate-dtr" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Generate DTR</button>
-        <button id="btn-generate-all" style="padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:6px;cursor:pointer;">Print All</button>
+        <button id="btn-generate-all" style="padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:6px;cursor:pointer;">Generate All DTR</button>
         <select id="column-layout-select" style="padding:8px;border-radius:6px;border:1px solid var(--border);font-size:13px;">
           <option value="1">1 Column</option>
           <option value="2">2 Columns</option>
@@ -742,7 +755,7 @@ function getSearchTeacherView() {
         <div id="teacher-attendance-panel">
           <div style="margin-bottom:15px;display:flex;gap:10px;align-items:center;">
             <label for="search-month-select" style="font-weight:500;">View Month/Year:</label>
-            <input type="month" id="search-month-select" value="2026-06" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
+            <input type="month" id="search-month-select" value="${getPrevMonthValue()}" style="padding:8px;border-radius:6px;border:1px solid var(--border);">
             <button id="btn-refresh-logs" style="padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Refresh Logs</button>
           </div>
           <h4 style="margin-bottom:15px;">Attendance Records</h4>
@@ -1877,7 +1890,7 @@ async function setupDtrView() {
     if (cols === '2') {
       container.innerHTML = `<div class="dtr-page-two-col"><div class="dtr-col">${dtrHtml}</div><div class="dtr-col">${dtrHtml}</div></div>`;
     } else {
-      container.innerHTML = dtrHtml;
+      container.innerHTML = `<div style="display:flex;flex-direction:column;gap:40px;width:100%;">${dtrHtml}</div>`;
     }
   });
 
@@ -2884,9 +2897,9 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
     }
   });
 
-  // Build table showing all 4 expected slots
+  // Build table showing all 4 expected slots (no per-row buttons)
   let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-  html += '<thead><tr style="background:var(--surface-alt);"><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Slot</th><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Time</th><th style="padding:8px;text-align:right;border-bottom:1px solid var(--border);">Actions</th></tr></thead>';
+  html += '<thead><tr style="background:var(--surface-alt);"><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Slot</th><th style="padding:8px;text-align:left;border-bottom:1px solid var(--border);">Time</th></tr></thead>';
   html += '<tbody>';
 
   // Display all 4 slots
@@ -2894,21 +2907,12 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
   slotOrder.forEach(slotName => {
     const log = logsMap[slotName];
     const timeValue = log ? formatTimeFor24HourInput(log.log_time) : '';
-
     const logId = log ? log.id : -1; // -1 for new/empty slots
-    
-    // Disable update button for blank existing logs (user must fill in time first)
-    const isEmptyLog = !log;
-    const buttonDisabled = isEmptyLog ? 'disabled' : '';
-    const buttonStyle = isEmptyLog ? 'opacity:0.5;cursor:not-allowed;' : '';
     
     html += `<tr style="border-bottom:1px solid var(--border);" data-log-id="${logId}" data-slot="${slotName}">
       <td style="padding:8px;font-weight:500;">${slotName}</td>
       <td style="padding:8px;">
         <input type="time" class="log-time-input" data-log-id="${logId}" value="${timeValue}" style="width:120px;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--input-bg);color:var(--text-main);">
-      </td>
-      <td style="padding:8px;text-align:right;">
-        <button class="inline-update-btn" data-log-id="${logId}" data-slot="${slotName}" style="padding:6px 10px;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;${buttonStyle}" ${buttonDisabled}>Update</button>
       </td>
     </tr>`;
   });
@@ -2916,96 +2920,70 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
   html += '</tbody></table>';
   logsList.innerHTML = html;
 
-  // Enable/disable update buttons based on time input
-  const inputListener = (e) => {
-    if (e.target.classList.contains('log-time-input')) {
-      const row = e.target.closest('tr');
-      const button = row.querySelector('.inline-update-btn');
-      const timeValue = e.target.value.trim();
-      
-      if (timeValue) {
-        // Enable button when time is entered
-        button.removeAttribute('disabled');
-        button.style.opacity = '1';
-        button.style.cursor = 'pointer';
-      } else {
-        // Disable button when time is cleared
-        button.setAttribute('disabled', 'disabled');
-        button.style.opacity = '0.5';
-        button.style.cursor = 'not-allowed';
-      }
-    }
-  };
-  logsList.addEventListener('input', inputListener);
+  // Add Update All button next to Close in the modal footer
+  const modalFooter = document.querySelector('#edit-modal > div > div:last-child');
+  const updateAllBtn = document.createElement('button');
+  updateAllBtn.id = 'update-all-btn';
+  updateAllBtn.textContent = 'Update All';
+  updateAllBtn.style.cssText = 'padding:8px 16px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;';
+  modalFooter.insertBefore(updateAllBtn, modalFooter.firstChild);
 
-  // Add event delegation for update buttons - ONE TIME ONLY per modal
+  // Update All click handler
   let updateProcessing = false;
-  const clickListener = async (e) => {
-    // Ignore if already processing or if button is disabled
-    if (updateProcessing || e.target.classList.contains('inline-update-btn') && e.target.hasAttribute('disabled')) {
-      return;
-    }
-    
-    if (e.target.classList.contains('inline-update-btn')) {
-      updateProcessing = true; // Prevent multiple simultaneous updates
-      
-      const logId = parseInt(e.target.getAttribute('data-log-id'));
-      const slotName = e.target.getAttribute('data-slot');
-      const row = e.target.closest('tr');
+  updateAllBtn.addEventListener('click', async () => {
+    if (updateProcessing) return;
+    updateProcessing = true;
+    updateAllBtn.disabled = true;
+    updateAllBtn.textContent = 'Updating...';
+
+    const rows = logsList.querySelectorAll('tr[data-slot]');
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const row of rows) {
+      const logId = parseInt(row.getAttribute('data-log-id'));
+      const slotName = row.getAttribute('data-slot');
       const input = row.querySelector('.log-time-input');
       const newTime = input.value.trim();
 
-      console.log('Update clicked - logId:', logId, 'slot:', slotName, 'newTime:', newTime);
-
-      if (!newTime) {
-        showToast('Please select a valid time');
-        updateProcessing = false;
-        return;
-      }
+      if (!newTime) continue; // Skip empty slots
 
       if (!/^\d{2}:\d{2}$/.test(newTime)) {
-        showToast('Please select a valid time');
-        updateProcessing = false;
-        return;
+        errorCount++;
+        continue;
       }
 
       try {
         let res;
         if (logId === -1) {
           // Create new log
-          console.log('Creating new log for slot:', slotName);
           const isCheckIn = slotName.includes('In');
           const logType = isCheckIn ? 'Check-in' : 'Check-out';
           res = await ipcRenderer.invoke('create-attendance-log', teacherId, day, newTime, logType, month, year);
         } else {
           // Update existing log
-          console.log('Updating existing log:', logId);
           res = await ipcRenderer.invoke('update-attendance-time', logId, newTime);
         }
 
         if (res.success) {
-          // Remove listeners before closing modal
-          logsList.removeEventListener('input', inputListener);
-          logsList.removeEventListener('click', clickListener);
-          modal.remove();
-          // Show non-blocking toast instead of alert (alert steals Electron focus)
-          showToast('Time updated successfully');
-          const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
-          const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
-          const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear, parseInt(teacherId));
-          displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
+          successCount++;
         } else {
-          showToast('Error: ' + res.message);
-          updateProcessing = false;
+          errorCount++;
         }
       } catch (err) {
-        console.error('Update failed', err);
-        showToast('Update failed: ' + err.message);
-        updateProcessing = false;
+        console.error('Update failed for', slotName, err);
+        errorCount++;
       }
     }
-  };
-  logsList.addEventListener('click', clickListener);
+
+    modal.remove();
+    showToast(`Updated ${successCount} time(s)${errorCount > 0 ? ', ' + errorCount + ' error(s)' : ''}`);
+    
+    const freshLogs = await ipcRenderer.invoke('get-attendance', parseInt(teacherId), currentMonth, currentYear);
+    const freshSchedule = await ipcRenderer.invoke('get-effective-schedule', parseInt(teacherId));
+    const freshHolidays = await ipcRenderer.invoke('get-holidays-for-dtr', currentMonth, currentYear, parseInt(teacherId));
+    displayTeacherLogs(freshLogs, teacherId, currentMonth, currentYear, freshSchedule, freshHolidays);
+  });
 
   document.getElementById('modal-close-btn').addEventListener('click', () => {
     modal.remove();

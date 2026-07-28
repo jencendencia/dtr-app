@@ -42,8 +42,8 @@
 
   /* Ensure exactly 1 page per form without clipping */
   .dtr-printable-area {
-    width: 146mm !important;
-    height: 206mm !important; /* 75% of A4 fit */
+    width: 109.5mm !important;
+    height: 210mm !important;
     box-sizing: border-box !important;
     margin: 0 auto !important;
     padding: 5mm 10mm !important;
@@ -59,8 +59,8 @@
   .dtr-page-two-col {
     display: flex !important;
     flex-direction: row !important;
-    width: 195mm !important;
-    height: 275mm !important;
+    width: 146.25mm !important;
+    height: 206.25mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     page-break-after: always;
@@ -76,7 +76,8 @@
 
   .dtr-page-two-col .dtr-printable-area {
     width: 100% !important;
-    height: 275mm !important;
+    max-width: none !important;
+    height: 206.25mm !important;
     padding: 3mm 4mm !important;
     margin: 0 !important;
     page-break-after: auto !important;
@@ -128,8 +129,7 @@
 /* Screen Preview styles */
 @media screen {
   .dtr-printable-area {
-    width: 210mm;
-    height: 297mm; /* Full A4 aspect in preview */
+    width: 109.5mm;
     margin: 0 auto 30px auto;
     padding: 10mm 15mm;
     box-shadow: 0 4px 15px rgba(0,0,0,0.15);
@@ -142,8 +142,8 @@
   .dtr-page-two-col {
     display: flex;
     flex-direction: row;
-    width: 210mm;
-    height: 297mm;
+    width: 157.5mm;
+    height: 222.75mm;
     margin: 0 auto 30px auto;
     gap: 4px;
     background: #fff;
@@ -162,6 +162,7 @@
 
   .dtr-page-two-col .dtr-printable-area {
     width: 100%;
+    max-width: none;
     height: 100%;
     margin: 0;
     padding: 3mm 4mm;
@@ -245,7 +246,7 @@
 }
 
 .dtr-name-line {
-  border-bottom: 1px solid #000;
+  border-bottom: 1px dashed #000;
   width: 100%;
   display: inline-block;
   font-size: 16px;
@@ -276,28 +277,33 @@
   flex-grow: 1; /* Automatically uniformly stretches all rows slightly to fill the rest of the A4 page perfectly! */
   border-collapse: collapse;
   font-size: 13px;
-  border: 2px solid #000;
+  border: 1px dashed #000;
 }
 
 .dtr-table th, .dtr-table td {
-  border: 1px solid #000;
+  border: 1px dashed #000;
   text-align: center;
   padding: 0;
 }
 
 .dtr-table th {
-  font-weight: bold;
+  font-weight: normal;
   vertical-align: middle;
   padding: 1px;
+  font-size: 10px;
 }
 
 .dtr-table .thick-col {
-  border-left: 2px solid #000;
-  border-right: 2px solid #000;
+  border-left: 1px dashed #000;
+  border-right: 1px dashed #000;
 }
 
-.dtr-table .thick-bottom { border-bottom: 2px solid #000; }
-.dtr-table .thick-top { border-top: 2px solid #000; }
+.dtr-page-two-col .dtr-table th {
+  font-size: 7px;
+}
+
+.dtr-table .thick-bottom { border-bottom: 1px dashed #000; }
+.dtr-table .thick-top { border-top: 1px dashed #000; }
 
 .certify-text {
   font-style: italic;
@@ -309,23 +315,20 @@
 }
 
 .signature-line {
-  border-bottom: 1px solid #000;
-  margin-left: auto;
-  width: 250px;
+  border-bottom: 1px dashed #000;
+  width: 100%;
   margin-bottom: 15px;
 }
 
 .double-signature-line {
-  border-bottom: 2px double #000;
-  margin-left: auto;
-  width: 250px;
+  border-bottom: 1px dashed #000;
+  width: 100%;
   margin-bottom: 8px; 
 }
 
 .in-charge-line {
-  border-top: 1px solid #000;
-  margin-left: auto;
-  width: 250px;
+  border-top: 1px dashed #000;
+  width: 100%;
   text-align: center;
   font-weight: bold;
   font-style: italic;
