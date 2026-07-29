@@ -59,13 +59,13 @@
   .dtr-page-two-col {
     display: flex !important;
     flex-direction: row !important;
-    width: 146.25mm !important;
-    height: 206.25mm !important;
+    width: 192mm !important;
+    height: 280mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     page-break-after: always;
     page-break-inside: avoid;
-    gap: 2mm;
+    gap: 4mm;
   }
 
   .dtr-page-two-col .dtr-col {
@@ -77,35 +77,35 @@
   .dtr-page-two-col .dtr-printable-area {
     width: 100% !important;
     max-width: none !important;
-    height: 206.25mm !important;
-    padding: 3mm 4mm !important;
+    height: 276mm !important;
+    padding: 4mm 5mm !important;
     margin: 0 !important;
     page-break-after: auto !important;
   }
 
   .dtr-page-two-col .dtr-title {
-    font-size: 14px;
+    font-size: 17px;
   }
 
   .dtr-page-two-col .dtr-name-line {
-    font-size: 12px !important;
+    font-size: 14px !important;
   }
 
   .dtr-page-two-col .cs-form-label {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .dtr-page-two-col .info-grid {
-    font-size: 10px;
-    margin-bottom: 3px;
+    font-size: 11px;
+    margin-bottom: 4px;
   }
 
   .dtr-page-two-col .dtr-table {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .dtr-page-two-col .certify-text {
-    font-size: 8px;
+    font-size: 10px;
     margin-top: 4px;
     margin-bottom: 6px;
   }
@@ -118,11 +118,11 @@
 
   .dtr-page-two-col .in-charge-line {
     width: 100%;
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .dtr-page-two-col .instructions-text {
-    font-size: 8px;
+    font-size: 10px;
   }
 }
 
@@ -142,13 +142,13 @@
   .dtr-page-two-col {
     display: flex;
     flex-direction: row;
-    width: 157.5mm;
-    height: 222.75mm;
+    width: 204mm;
+    height: 295mm;
     margin: 0 auto 30px auto;
     gap: 4px;
     background: #fff;
     box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-    padding: 5mm;
+    padding: 6mm;
     box-sizing: border-box;
   }
 
@@ -165,34 +165,34 @@
     max-width: none;
     height: 100%;
     margin: 0;
-    padding: 3mm 4mm;
+    padding: 4mm 5mm;
     box-shadow: none;
     border: 1px solid #e5e7eb;
   }
 
   .dtr-page-two-col .dtr-title {
-    font-size: 14px;
+    font-size: 17px;
   }
 
   .dtr-page-two-col .dtr-name-line {
-    font-size: 12px !important;
+    font-size: 14px !important;
   }
 
   .dtr-page-two-col .cs-form-label {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .dtr-page-two-col .info-grid {
-    font-size: 10px;
-    margin-bottom: 3px;
+    font-size: 11px;
+    margin-bottom: 4px;
   }
 
   .dtr-page-two-col .dtr-table {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .dtr-page-two-col .certify-text {
-    font-size: 9px;
+    font-size: 10px;
     margin-top: 4px;
     margin-bottom: 6px;
   }
@@ -205,11 +205,11 @@
 
   .dtr-page-two-col .in-charge-line {
     width: 100%;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .dtr-page-two-col .instructions-text {
-    font-size: 9px;
+    font-size: 10px;
   }
 }
 
@@ -299,7 +299,7 @@
 }
 
 .dtr-page-two-col .dtr-table th {
-  font-size: 7px;
+  font-size: 9px;
 }
 
 .dtr-table .thick-bottom { border-bottom: 1px dashed #000; }
