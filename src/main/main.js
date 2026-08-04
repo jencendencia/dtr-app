@@ -878,32 +878,96 @@ ipcMain.handle('get-device-users', async () => {
   return zktecoService.getUsers();
 });
 
-ipcMain.handle('sync-device-attendance', async () => {
+ipcMain.handle('sync-device-attendance', async (event, options = {}) => {
   try {
+    // When enabled, records that can't be matched to an existing teacher are
+    // skipped instead of auto-creating "Employee N" placeholder teachers
+    // (e.g. orphaned logs left behind by users deleted from the device).
+    const skipUnmatched = !!(options && options.skipUnmatched);
+
     // First, fetch user names from the device
     const deviceUsersResult = await zktecoService.getUsers();
-    const deviceUserMap = {}; // userId → name
-    if (deviceUsersResult.success && deviceUsersResult.data) {
-      for (const u of deviceUsersResult.data) {
-        if (u.userId && u.name) {
-          deviceUserMap[String(u.userId)] = u.name;
+    const userListStatus = deviceUsersResult.status || (deviceUsersResult.success && deviceUsersResult.data && deviceUsersResult.data.length > 0 ? 'ok' : 'empty');
+    const deviceUserCount = deviceUsersResult.userCount || 0;
+    const deviceUsers = (deviceUsersResult.success && deviceUsersResult.data) ? deviceUsersResult.data : [];
+    const deviceUserMap = {};          // canonical id → name
+    const deviceUsersByNormName = {};  // normalized full name → device user
+    for (const u of deviceUsers) {
+      // TCP path returns userId as a 9-char string; the UDP fallback returns
+      // it as a number (and uid as the binary record id) — accept both.
+      const rawId = u.userId != null ? String(u.userId) : (u.uid != null ? String(u.uid) : '');
+      const name = String(u.name || '').trim();
+      if (!rawId && !name) continue;
+      // Canonical ID forms only (raw / zero-stripped / parsed) — enough to
+      // match "00005" vs "5" without exploding into every padded width.
+      if (rawId && name) {
+        for (const v of canonicalIdVariants(rawId)) {
+          if (!deviceUserMap[v]) deviceUserMap[v] = name;
         }
       }
-      console.log(`[Zkteco Sync] Loaded ${Object.keys(deviceUserMap).length} user(s) from device:`, deviceUserMap);
+      if (name) {
+        const norm = normalizeName(name);
+        if (!deviceUsersByNormName[norm]) deviceUsersByNormName[norm] = u;
+      }
     }
+    console.log(`[Zkteco Sync] Loaded ${Object.keys(deviceUserMap).length} id(s) / ${Object.keys(deviceUsersByNormName).length} user(s) from device`);
 
     const result = await zktecoService.getAttendanceLogs();
     if (!result.success) return result;
 
     const records = result.data || [];
     if (records.length === 0) {
-      return { success: true, message: 'No attendance records on device.', synced: 0 };
+      // No attendance logs to import. After a "Clear & Re-sync" the local DB is
+      // empty, so if the device DID stream its user list, restore those users as
+      // teachers here — otherwise the user would lose every teacher with no way
+      // to bring them back.
+      if (deviceUsers.length > 0) {
+        const imported = importDeviceUsersAsTeachers(deviceUsers);
+        const plural = imported === 1 ? 'user' : 'users';
+        const summary = `No attendance records on device. Imported ${imported} ${plural} from the device as teachers.`;
+        console.log('[Zkteco Sync]', summary);
+        logActivity(currentSessionUser, 'Sync Device', summary);
+        db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type = 'zkteco'").run();
+        return {
+          success: true,
+          message: summary,
+          synced: 0,
+          importedUsers: imported,
+          userListUnavailable: false
+        };
+      }
+      // The device reports users but didn't stream them (it answered the user-list
+      // request with "nothing to send" or an error) — the roster can't be rebuilt
+      // from the device, so point the user at a working recovery path.
+      if (deviceUserCount > 0 && userListStatus !== 'ok') {
+        const summary = `No attendance records on device, and the device has ${deviceUserCount} user(s) but doesn't stream its user list over TCP/IP (a firmware limitation of this device). Re-add the teachers in the Teacher Enrollment tab and click "Enroll All to Device" to re-link their fingerprints.`;
+        console.log('[Zkteco Sync]', summary);
+        logActivity(currentSessionUser, 'Sync Device', summary);
+        return {
+          success: true,
+          message: summary,
+          synced: 0,
+          userListUnavailable: true,
+          userCount: deviceUserCount
+        };
+      }
+      const summary = 'No attendance records on device.';
+      console.log('[Zkteco Sync]', summary);
+      logActivity(currentSessionUser, 'Sync Device', summary);
+      return { success: true, message: summary, synced: 0, userListUnavailable: false };
     }
 
-    // Attach device user names to records
+    // Attach device user names to records. Many devices store the user's NAME
+    // in the user_id field — in that case treat the ID itself as the name.
+    // Only accept plausible names so garbage IDs like "Q" or ".08" don't get
+    // fuzzy-matched onto the wrong teacher.
     for (const record of records) {
-      if (!record.name && deviceUserMap[record.employeeId]) {
-        record.name = deviceUserMap[record.employeeId];
+      const empId = String(record.employeeId || '').trim();
+      if (!record.name && deviceUserMap[empId]) {
+        record.name = deviceUserMap[empId];
+      }
+      if (!record.name && empId && isPlausibleName(empId)) {
+        record.name = empId;
       }
     }
 
@@ -912,8 +976,13 @@ ipcMain.handle('sync-device-attendance', async () => {
     const biometricMap = {};
     const nameMap = {};
     const nameList = [];
+    const teacherById = {};
     teachers.forEach(t => {
-      biometricMap[String(t.biometric_id)] = t.id;
+      // Register all ID variants so device formats like "00005" match "5".
+      for (const v of idVariants(String(t.biometric_id))) {
+        biometricMap[v] = t.id;
+      }
+      teacherById[t.id] = t;
       const normalized = normalizeName(t.name);
       nameMap[normalized] = t.id;
       nameList.push({ name: t.name, normalized, id: t.id });
@@ -921,39 +990,76 @@ ipcMain.handle('sync-device-attendance', async () => {
 
     let insertedCount = 0;
     let skippedCount = 0;
+    let skippedUnmatchedCount = 0;
     let autoCreatedTeachers = new Set();
     const autoCreatedMap = {};
     const maxBioRow = db.prepare('SELECT COALESCE(MAX(biometric_id), 0) as maxId FROM Teachers').get();
     let nextBiometricId = (maxBioRow?.maxId || 0) + 1;
 
     const insertTeacherStmt = db.prepare('INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)');
+    const renameTeacherStmt = db.prepare('UPDATE Teachers SET name = ? WHERE id = ?');
     const checkExistingStmt = db.prepare('SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?');
     const insertLogStmt = db.prepare('INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)');
 
     const importTransaction = db.transaction(() => {
       for (const record of records) {
-        console.log(`[Zkteco Sync] Processing record: employeeId="${record.employeeId}", logTime="${record.logTime}", logType="${record.logType}"`);
+        const recordEmpId = String(record.employeeId || '').trim();
+        console.log(`[Zkteco Sync] Processing record: employeeId="${recordEmpId}", logTime="${record.logTime}", logType="${record.logType}"`);
 
-        let teacherId = biometricMap[record.employeeId];
+        let teacherId = biometricMap[recordEmpId];
         if (!teacherId && record.name) {
           teacherId = fuzzyMatchTeacher(record.name, nameMap, nameList);
         }
 
-        // Auto-create teacher if not found
-        if (!teacherId && record.employeeId) {
-          // Try to parse employeeId as a number for biometric_id
-          const bioId = parseInt(record.employeeId);
-          const cleanName = record.name || `Employee ${record.employeeId}`;
+        // On devices where attendance records carry a (truncated) NAME in the
+        // user_id field, match that name to a device user so we can use the
+        // full name and the real numeric biometric id.
+        let deviceUserId = null;
+        if (!teacherId && recordEmpId && isPlausibleName(recordEmpId)) {
+          const norm = normalizeName(recordEmpId);
+          for (const key of Object.keys(deviceUsersByNormName)) {
+            if (key.includes(norm) || norm.includes(key)) {
+              const du = deviceUsersByNormName[key];
+              if (du.userId != null) deviceUserId = String(du.userId).trim();
+              const fullName = String(du.name || '').trim();
+              if (fullName) record.name = fullName;
+              else if (!record.name) record.name = recordEmpId;
+              break;
+            }
+          }
+        }
 
-          if (!isNaN(bioId) && bioId > 0) {
+        // When "skip unmatched" is on, drop records that don't resolve to an
+        // existing teacher instead of auto-creating a placeholder teacher.
+        if (!teacherId && skipUnmatched) {
+          console.log(`[Zkteco Sync] Skipping unmatched log (skipUnmatched): employeeId="${recordEmpId}", name="${record.name || ''}"`);
+          skippedUnmatchedCount++;
+          continue;
+        }
+
+        // Auto-create teacher if not found
+        if (!teacherId && recordEmpId) {
+          // Prefer the device user's numeric ID; otherwise only treat the ID
+          // as numeric when it's fully numeric — else the device stored the
+          // teacher's NAME in the user_id field.
+          const deviceIdIsNumeric = deviceUserId && /^\d+$/.test(deviceUserId);
+          const isNumericId = /^\d+$/.test(recordEmpId);
+          const bioId = deviceIdIsNumeric
+            ? parseInt(deviceUserId, 10)
+            : (isNumericId ? parseInt(recordEmpId, 10) : NaN);
+          const cleanName = record.name
+            ? record.name.replace(/\s+/g, ' ').trim()
+            : `Employee ${bioId > 0 ? bioId : recordEmpId}`;
+
+          if (isNumericId && bioId > 0) {
             // Try the parsed ID first
             try {
               const insertResult = insertTeacherStmt.run(cleanName, bioId);
               teacherId = insertResult.lastInsertRowid;
-              autoCreatedMap[record.employeeId] = teacherId;
+              autoCreatedMap[recordEmpId] = teacherId;
               autoCreatedTeachers.add(cleanName);
               biometricMap[String(bioId)] = teacherId;
-              biometricMap[record.employeeId] = teacherId;
+              biometricMap[recordEmpId] = teacherId;
               console.log(`[Zkteco Sync] Auto-created teacher: "${cleanName}" (Biometric: ${bioId})`);
             } catch (createErr) {
               // UNIQUE constraint — biometric_id already exists, try next available ID
@@ -964,10 +1070,10 @@ ipcMain.handle('sync-device-attendance', async () => {
                   try {
                     const insertResult = insertTeacherStmt.run(cleanName, nextId);
                     teacherId = insertResult.lastInsertRowid;
-                    autoCreatedMap[record.employeeId] = teacherId;
+                    autoCreatedMap[recordEmpId] = teacherId;
                     autoCreatedTeachers.add(cleanName);
                     biometricMap[String(nextId)] = teacherId;
-                    biometricMap[record.employeeId] = teacherId;
+                    biometricMap[recordEmpId] = teacherId;
                     nextBiometricId = nextId + 1;
                     console.log(`[Zkteco Sync] Auto-created teacher: "${cleanName}" (Biometric: ${nextId})`);
                     break;
@@ -990,14 +1096,14 @@ ipcMain.handle('sync-device-attendance', async () => {
             }
           } else {
             // employeeId is not a valid number — use next available biometric_id
-            console.log(`[Zkteco Sync] employeeId "${record.employeeId}" is not a valid number, using next available ID`);
+            console.log(`[Zkteco Sync] employeeId "${recordEmpId}" is not a valid number, using next available ID`);
             try {
               const insertResult = insertTeacherStmt.run(cleanName, nextBiometricId);
               teacherId = insertResult.lastInsertRowid;
-              autoCreatedMap[record.employeeId] = teacherId;
+              autoCreatedMap[recordEmpId] = teacherId;
               autoCreatedTeachers.add(cleanName);
               biometricMap[String(nextBiometricId)] = teacherId;
-              biometricMap[record.employeeId] = teacherId;
+              biometricMap[recordEmpId] = teacherId;
               console.log(`[Zkteco Sync] Auto-created teacher: "${cleanName}" (Biometric: ${nextBiometricId})`);
               nextBiometricId++;
             } catch (createErr) {
@@ -1006,8 +1112,21 @@ ipcMain.handle('sync-device-attendance', async () => {
           }
         }
 
+        // Heal old "Employee N" placeholder teachers: if this record resolved to
+        // a placeholder and the device gave us a real name, rename the teacher.
+        if (teacherId && record.name && !autoCreatedMap[recordEmpId]) {
+          const matched = teacherById[teacherId];
+          if (matched && /^Employee\s+\d+$/.test(matched.name.trim())) {
+            const oldName = matched.name;
+            const cleanName = record.name.replace(/\s+/g, ' ').trim();
+            renameTeacherStmt.run(cleanName, teacherId);
+            matched.name = cleanName;
+            console.log(`[Zkteco Sync] Renamed placeholder teacher "${oldName}" → "${cleanName}"`);
+          }
+        }
+
         if (!teacherId) {
-          console.log(`[Zkteco Sync] No teacher match for employeeId="${record.employeeId}", skipping`);
+          console.log(`[Zkteco Sync] No teacher match for employeeId="${recordEmpId}", skipping`);
           skippedCount++;
           continue;
         }
@@ -1034,14 +1153,43 @@ ipcMain.handle('sync-device-attendance', async () => {
     // Update last_sync for all ZKTeco devices
     db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type = 'zkteco'").run();
 
+    // If the device streamed its user list, also import any users that aren't
+    // already in the local Teachers table (e.g. teachers on the device who have
+    // no attendance logs yet). This keeps the roster in sync with the device.
+    let importedDeviceUsers = 0;
+    if (userListStatus === 'ok' && deviceUsers.length > 0) {
+      importedDeviceUsers = importDeviceUsersAsTeachers(deviceUsers);
+    }
+
     const autoCreatedList = [...autoCreatedTeachers];
     let summary = `Synced ${insertedCount} new record(s) from device. Skipped ${skippedCount} duplicate(s).`;
+    if (skippedUnmatchedCount > 0) {
+      summary += ` Skipped ${skippedUnmatchedCount} unmatched log(s) with no matching teacher.`;
+    }
+    if (importedDeviceUsers > 0) {
+      const plural = importedDeviceUsers === 1 ? 'user' : 'users';
+      summary += ` Imported ${importedDeviceUsers} ${plural} from the device as teachers.`;
+    }
     if (autoCreatedList.length > 0) {
       summary += ` Auto-created ${autoCreatedList.length} teacher(s): ${autoCreatedList.join(', ')}.`;
     }
+    if (userListStatus !== 'ok' && deviceUserCount > 0) {
+      summary += ` Note: device has ${deviceUserCount} user(s) but didn't stream its user list — logs were matched using the IDs/names in the attendance records themselves.`;
+    }
     console.log('[Zkteco Sync]', summary);
     logActivity(currentSessionUser, 'Sync Device', summary);
-    return { success: true, message: summary, synced: insertedCount, skipped: skippedCount, autoCreated: autoCreatedList.length, autoCreatedNames: autoCreatedList };
+    return {
+      success: true,
+      message: summary,
+      synced: insertedCount,
+      skipped: skippedCount,
+      skippedUnmatched: skippedUnmatchedCount,
+      autoCreated: autoCreatedList.length,
+      autoCreatedNames: autoCreatedList,
+      importedUsers: importedDeviceUsers,
+      userListUnavailable: userListStatus !== 'ok' && deviceUserCount > 0,
+      userCount: deviceUserCount
+    };
   } catch (err) {
     console.error('[Zkteco Sync] Error:', err);
     return { success: false, message: err.message };
@@ -1071,46 +1219,6 @@ ipcMain.handle('clear-device-sync-data', async () => {
     return { success: true, message: `Cleared ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s). You can now re-sync.`, cleared: allTeachers.length };
   } catch (err) {
     console.error('Error clearing device sync data:', err);
-    return { success: false, message: err.message };
-  }
-});
-
-// ─── Clear Device Data (Device + DB) ─────────────────────────
-ipcMain.handle('clear-device-data', async () => {
-  try {
-    const messages = [];
-
-    // 1. Clear attendance logs on the physical device (best effort)
-    try {
-      const clearLogsResult = await zktecoService.clearAttendanceLog();
-      if (clearLogsResult.success) {
-        messages.push('Device attendance logs cleared');
-      } else {
-        messages.push(`Device log clear failed: ${clearLogsResult.message}`);
-      }
-    } catch (logErr) {
-      messages.push(`Device log clear error: ${logErr.message}`);
-    }
-
-    // 2. Clear local DB (teachers + attendance logs)
-    const allTeachers = db.prepare("SELECT id, name, biometric_id FROM Teachers").all();
-
-    if (allTeachers.length > 0) {
-      const teacherIds = allTeachers.map(t => t.id);
-      const placeholders = teacherIds.map(() => '?').join(',');
-
-      const logResult = db.prepare(`DELETE FROM AttendanceLogs WHERE teacher_id IN (${placeholders})`).run(...teacherIds);
-      db.prepare(`DELETE FROM Teachers WHERE id IN (${placeholders})`).run(...teacherIds);
-
-      messages.push(`Cleared ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s) from database`);
-      logActivity(currentSessionUser, 'Clear Device Data', `Cleared device logs + ${allTeachers.length} teacher(s) and ${logResult.changes} attendance log(s) from DB`);
-    } else {
-      messages.push('No local teachers to clear');
-    }
-
-    return { success: true, message: messages.join('. ') + '.', cleared: allTeachers?.length || 0 };
-  } catch (err) {
-    console.error('Error clearing device data:', err);
     return { success: false, message: err.message };
   }
 });
@@ -1325,6 +1433,100 @@ function timeToMinutesHelper(timeVal) {
 function normalizeName(name) {
   if (!name) return '';
   return name.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Heuristic for treating a device user_id as a teacher name: it should look
+ * like a person's name (at least 3 chars, containing at least one letter).
+ * Filters out numeric IDs and junk entries like "Q" or ".08".
+ */
+function isPlausibleName(s) {
+  return s.length >= 3 && /[a-zA-Z]/.test(s);
+}
+
+/**
+ * Canonical, non-exploding variants of an ID: the raw trimmed value, the
+ * leading-zero-stripped value, and the parsed integer. Enough to match
+ * "00005" vs "5" without generating every zero-padded width.
+ */
+function canonicalIdVariants(rawId) {
+  const variants = new Set();
+  const s = String(rawId == null ? '' : rawId).trim();
+  if (!s) return variants;
+  variants.add(s);
+  const stripped = s.replace(/^0+/, '');
+  if (stripped) variants.add(stripped);
+  if (/^\d+$/.test(s)) variants.add(String(parseInt(s, 10)));
+  return variants;
+}
+
+/**
+ * Return all likely variants of a biometric/user ID string so that device
+ * formats like "00005", "05", "5" or "000000005" all match the same teacher.
+ * Includes the raw string, the leading-zero-stripped value, and common
+ * zero-padded widths (2-9 digits) used by ZKTeco firmware.
+ */
+function idVariants(rawId) {
+  const variants = new Set();
+  const s = String(rawId == null ? '' : rawId).trim();
+  if (!s) return variants;
+
+  variants.add(s);
+  const stripped = s.replace(/^0+/, '');
+  if (stripped) variants.add(stripped);
+
+  if (/^\d+$/.test(s)) {
+    const num = parseInt(s, 10);
+    variants.add(String(num));
+    for (let width = 2; width <= 9; width++) {
+      variants.add(String(num).padStart(width, '0'));
+    }
+  }
+
+  return variants;
+}
+
+/**
+ * Import users from the physical device into the local Teachers table.
+ * Used by the sync flow when the device has no attendance records to import
+ * (e.g. right after a "Clear & Re-sync"), so the teacher list can be restored
+ * straight from the device instead of being wiped out.
+ *
+ * Each device user's user-facing ID (the 9-char "userId", which the app sets to
+ * the teacher's biometric_id when enrolling) becomes the teacher's biometric_id;
+ * the binary uid is used as a fallback when userId isn't numeric.
+ * @param {Array} deviceUsers - users as returned by zktecoService.getUsers()
+ * @returns {number} number of teachers newly created
+ */
+function importDeviceUsersAsTeachers(deviceUsers) {
+  if (!Array.isArray(deviceUsers) || deviceUsers.length === 0) return 0;
+
+  const findBioStmt = db.prepare('SELECT id FROM Teachers WHERE biometric_id = ?');
+  const insertTeacherStmt = db.prepare('INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)');
+  let imported = 0;
+
+  const tx = db.transaction(() => {
+    for (const u of deviceUsers) {
+      const rawId = u.userId != null ? String(u.userId).trim() : (u.uid != null ? String(u.uid) : '');
+      const name = String(u.name || '').trim();
+      if (!rawId && !name) continue;
+
+      let bioId = parseInt(rawId, 10);
+      if (isNaN(bioId) || bioId <= 0) bioId = parseInt(String(u.uid == null ? '' : u.uid), 10);
+      if (isNaN(bioId) || bioId <= 0) continue;
+
+      // Don't clobber teachers that already exist for this ID
+      if (findBioStmt.get(bioId)) continue;
+
+      const cleanName = (name || `Employee ${bioId}`).replace(/\s+/g, ' ').trim();
+      insertTeacherStmt.run(cleanName, bioId);
+      imported++;
+      console.log(`[Zkteco Sync] Imported device user as teacher: "${cleanName}" (Biometric: ${bioId})`);
+    }
+  });
+
+  tx();
+  return imported;
 }
 
 /**

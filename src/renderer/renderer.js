@@ -590,6 +590,10 @@ function getDevicesView() {
           <button id="btn-clear-resync" style="padding:8px 16px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;display:none;">Clear & Re-sync</button>
           <button id="btn-view-device-users" style="padding:8px 16px;background:#8b5cf6;color:white;border:none;border-radius:6px;cursor:pointer;display:none;">View Users</button>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);cursor:pointer;margin:0 0 12px 0;">
+          <input type="checkbox" id="chk-skip-unmatched" style="cursor:pointer;width:15px;height:15px;">
+          Skip logs with no matching teacher (don't auto-create "Employee N" placeholders)
+        </label>
         <span id="connection-status" style="font-size:13px;"></span>
       </div>
 
@@ -1445,7 +1449,8 @@ async function setupDevicesView() {
     statusEl.innerHTML = '<span style="color:#6366f1;">● Syncing attendance data...</span>';
     document.getElementById('btn-sync-attendance').disabled = true;
 
-    const result = await ipcRenderer.invoke('sync-device-attendance');
+    const skipUnmatched = !!(document.getElementById('chk-skip-unmatched') && document.getElementById('chk-skip-unmatched').checked);
+    const result = await ipcRenderer.invoke('sync-device-attendance', { skipUnmatched });
     document.getElementById('btn-sync-attendance').disabled = false;
     checkConnectionStatus();
 
@@ -1464,7 +1469,10 @@ async function setupDevicesView() {
       let detailsHtml = '';
       if (result.synced > 0) detailsHtml += `<span style="color:#10b981;">● ${result.synced} new record(s) added</span><br>`;
       if (result.skipped > 0) detailsHtml += `<span style="color:#f59e0b;">● ${result.skipped} duplicate(s) skipped</span><br>`;
+      if (result.skippedUnmatched > 0) detailsHtml += `<span style="color:#9ca3af;">● ${result.skippedUnmatched} unmatched log(s) skipped (no matching teacher)</span><br>`;
       if (result.autoCreated > 0) detailsHtml += `<span style="color:#3b82f6;">● Auto-created ${result.autoCreated} teacher(s): ${(result.autoCreatedNames || []).join(', ')}</span>`;
+      if (result.importedUsers > 0) detailsHtml += `<span style="color:#3b82f6;">● Imported ${result.importedUsers} user(s) from device as teachers</span><br>`;
+      if (result.userListUnavailable && result.userCount > 0) detailsHtml += `<span style="color:#f59e0b;">● Device has ${result.userCount} user(s) but doesn't stream its user list (firmware limitation). Re-add them under Teacher Enrollment, then use "Enroll All to Device" to re-link fingerprints.</span><br>`;
       resultDetails.innerHTML = detailsHtml;
     } else {
       resultTitle.textContent = '❌ Sync Failed';
@@ -1477,13 +1485,13 @@ async function setupDevicesView() {
 
   // Clear & Re-sync button
   document.getElementById('btn-clear-resync').addEventListener('click', async () => {
-    const confirmed = await showConfirm('This will clear attendance logs from the device AND delete all local teachers and logs, then re-sync fresh data. Continue?');
+    const confirmed = await showConfirm('This will delete all local teachers and attendance logs, then re-sync fresh data from the device. The attendance logs stored on the device itself will NOT be deleted. Continue?');
     if (!confirmed) return;
 
     const statusEl = document.getElementById('connection-status');
-    statusEl.innerHTML = '<span style="color:#f59e0b;">● Clearing device and local data...</span>';
+    statusEl.innerHTML = '<span style="color:#f59e0b;">● Clearing local data...</span>';
 
-    const clearResult = await ipcRenderer.invoke('clear-device-data');
+    const clearResult = await ipcRenderer.invoke('clear-device-sync-data');
     if (!clearResult.success) {
       showToast('Error: ' + clearResult.message);
       checkConnectionStatus();
@@ -1494,7 +1502,8 @@ async function setupDevicesView() {
     statusEl.innerHTML = '<span style="color:#6366f1;">● Re-syncing attendance data...</span>';
 
     // Now re-sync
-    const result = await ipcRenderer.invoke('sync-device-attendance');
+    const skipUnmatched = !!(document.getElementById('chk-skip-unmatched') && document.getElementById('chk-skip-unmatched').checked);
+    const result = await ipcRenderer.invoke('sync-device-attendance', { skipUnmatched });
     checkConnectionStatus();
 
     // Show result
@@ -1512,7 +1521,10 @@ async function setupDevicesView() {
       let detailsHtml = '';
       if (result.synced > 0) detailsHtml += `<span style="color:#10b981;">● ${result.synced} new record(s) added</span><br>`;
       if (result.skipped > 0) detailsHtml += `<span style="color:#f59e0b;">● ${result.skipped} duplicate(s) skipped</span><br>`;
+      if (result.skippedUnmatched > 0) detailsHtml += `<span style="color:#9ca3af;">● ${result.skippedUnmatched} unmatched log(s) skipped (no matching teacher)</span><br>`;
       if (result.autoCreated > 0) detailsHtml += `<span style="color:#3b82f6;">● Auto-created ${result.autoCreated} teacher(s): ${(result.autoCreatedNames || []).join(', ')}</span>`;
+      if (result.importedUsers > 0) detailsHtml += `<span style="color:#3b82f6;">● Imported ${result.importedUsers} user(s) from device as teachers</span><br>`;
+      if (result.userListUnavailable && result.userCount > 0) detailsHtml += `<span style="color:#f59e0b;">● Device has ${result.userCount} user(s) but doesn't stream its user list (firmware limitation). Re-add them under Teacher Enrollment, then use "Enroll All to Device" to re-link fingerprints.</span><br>`;
       resultDetails.innerHTML = detailsHtml;
     } else {
       resultTitle.textContent = '❌ Re-sync Failed';
