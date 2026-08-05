@@ -91,6 +91,8 @@ function updateThemeToggleUI(theme) {
 function applyBranding() {
   const schoolName = localStorage.getItem('schoolName') || '';
   const schoolLogo = localStorage.getItem('schoolLogo') || '';
+  // Default to the application's JE logo when no custom school logo is set
+  const defaultLogo = 'JE_logo.png';
   const titleText = schoolName ? `${schoolName} DTR System` : 'DTR System';
 
   const loginTitle = document.getElementById('login-title');
@@ -102,15 +104,10 @@ function applyBranding() {
   if (loginTitle) loginTitle.textContent = titleText;
   if (sidebarTitle) sidebarTitle.textContent = titleText;
 
-  if (schoolLogo) {
-    if (loginLogo) { loginLogo.src = schoolLogo; loginLogo.style.display = 'block'; }
-    if (sidebarLogo) { sidebarLogo.src = schoolLogo; sidebarLogo.style.display = 'block'; }
-    if (loginIconDefault) loginIconDefault.style.display = 'none';
-  } else {
-    if (loginLogo) loginLogo.style.display = 'none';
-    if (sidebarLogo) sidebarLogo.style.display = 'none';
-    if (loginIconDefault) loginIconDefault.style.display = '';
-  }
+  const logoToUse = schoolLogo || defaultLogo;
+  if (loginLogo) { loginLogo.src = logoToUse; loginLogo.style.display = 'block'; }
+  if (sidebarLogo) { sidebarLogo.src = logoToUse; sidebarLogo.style.display = 'block'; }
+  if (loginIconDefault) loginIconDefault.style.display = 'none';
 }
 
 // ─── LICENSE ACTIVATION ─────────────────────────────────────
