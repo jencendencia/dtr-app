@@ -19,6 +19,113 @@ function timeToMinutes(timeStr) {
   return h * 60 + m;
 }
 
+function toMinutesOrNull(timeStr) {
+  if (!timeStr) return null;
+  const parts = String(timeStr).split(':');
+  if (parts.length < 2) return null;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+const DEFAULT_SCHEDULE = {
+  am_time_in: '07:00', am_time_in_end: '08:00',
+  am_time_out_start: '12:00', am_time_out: '12:20',
+  pm_time_in: '12:35', pm_time_in_end: '13:00',
+  pm_time_out_start: '17:00', pm_time_out: '18:00'
+};
+
+/**
+ * Assign a day's attendance logs to the four DTR slots using the Time
+ * Schedule Configuration (Admin → Time Schedule Configuration modal) instead
+ * of hard-coded clock times:
+ *
+ *   AM Arrival    : Check-in before am_time_out_start            (e.g. < 12:00)
+ *   AM Departure  : ANY scan from am_time_out_start up to the lunch boundary
+ *                   (e.g. 12:00–12:30) — "12:01 to 12:30 is check-out". The
+ *                   stored in/out state is NOT consulted here: device states
+ *                   get mis-toggled, the time window is authoritative.
+ *   PM Arrival    : first scan after the lunch boundary up to pm_time_out_start
+ *                   (e.g. 12:31–16:59) — "12:31 to 1:00 PM is PM check-in"
+ *   PM Departure  : Check-out at/after pm_time_out_start        (e.g. ≥ 17:00)
+ *   PM Departure  : Check-out at/after pm_time_out_start        (e.g. ≥ 17:00)
+ *
+ * The lunch boundary is the midpoint between am_time_out and pm_time_in,
+ * rounded to the nearest 5 minutes (12:20 & 12:35 → 12:30).
+ *
+ * Edge cases:
+ *  - A morning Check-out with no recorded AM Arrival is kept as the AM
+ *    Departure — the teacher forgot to check in on arrival; the scan is NOT
+ *    dropped from the DTR.
+ *  - A Check-out inside the PM window backfills AM Departure when the morning
+ *    was attended but no AM-out scan exists (forgot to scan out at lunch);
+ *    if AM Departure is already filled it is an early PM Departure.
+ *  - Arrivals keep their first scan; the PM departure keeps the last scan.
+ *
+ * Returns { amInLog, amOutLog, pmInLog, pmOutLog, amInMins, amOutMins, pmInMins, pmOutMins }.
+ */
+function classifyDayLogs(dayLogs, schedule) {
+  const s = schedule || DEFAULT_SCHEDULE;
+  const amOutStartRaw = toMinutesOrNull(s.am_time_out_start);
+  const amOutEnd = toMinutesOrNull(s.am_time_out);
+  const pmInStart = toMinutesOrNull(s.pm_time_in);
+  const pmOutStartRaw = toMinutesOrNull(s.pm_time_out_start);
+  const amOutStartM = amOutStartRaw !== null ? amOutStartRaw : 720;   // 12:00 fallback
+  const pmOutStartM = pmOutStartRaw !== null ? pmOutStartRaw : 1020;  // 17:00 fallback
+
+  let lunchBoundary;
+  if (amOutEnd !== null && pmInStart !== null && pmInStart > amOutEnd) {
+    lunchBoundary = Math.round((amOutEnd + pmInStart) / 10) * 5;
+  } else {
+    lunchBoundary = (amOutEnd !== null ? amOutEnd : 740) + 5;
+  }
+
+  const recs = (dayLogs || [])
+    .map(l => {
+      const tp = String(l.log_time || '');
+      const mins = tp.length >= 16 ? toMinutesOrNull(tp.substring(11, 16)) : null;
+      return { log: l, type: l.log_type, mins };
+    })
+    .filter(r => r.mins !== null && r.type)
+    .sort((a, b) => String(a.log.log_time).localeCompare(String(b.log.log_time)));
+
+  const out = { amInLog: null, amOutLog: null, pmInLog: null, pmOutLog: null,
+                amInMins: null, amOutMins: null, pmInMins: null, pmOutMins: null };
+
+  for (const r of recs) {
+    if (r.mins < amOutStartM) {                      // morning (e.g. < 12:00)
+      if (r.type === 'Check-in' && !out.amInLog) { out.amInLog = r.log; out.amInMins = r.mins; }
+      else if (r.type === 'Check-out' && !out.amOutLog) {
+        // A morning departure — even as the first scan of the day. No recorded
+        // arrival means the teacher forgot to check in; the scan is kept.
+        out.amOutLog = r.log; out.amOutMins = r.mins;
+      }
+    } else if (r.mins <= lunchBoundary) {            // AM check-out window (12:00–12:30)
+      // "12:01 to 12:30 is check-out" — ANY scan in this window is the AM
+      // departure, regardless of the stored in/out state (states get
+      // mis-toggled on the device; the Time Config window is authoritative).
+      if (!out.amOutLog) { out.amOutLog = r.log; out.amOutMins = r.mins; }
+    } else if (r.mins < pmOutStartM) {               // PM window (12:31–16:59)
+      if (r.type === 'Check-out' && out.amInMins !== null && out.amOutMins === null) {
+        // Missed AM scan-out: this departure closes the morning session
+        out.amOutLog = r.log; out.amOutMins = r.mins;
+      } else if (!out.pmInLog) {
+        // "12:31 to 1:00 PM is PM check-in" — the first scan in the window is
+        // the PM arrival, regardless of stored state (later arrivals keep PM
+        // In and are charged tardiness by the undertime calculation)
+        out.pmInLog = r.log; out.pmInMins = r.mins;
+      } else if (r.type === 'Check-out' && out.pmOutMins === null) {
+        // Left before pm_time_out_start with the afternoon already started
+        out.pmOutLog = r.log; out.pmOutMins = r.mins;
+      }
+    } else {                                         // from pm_time_out_start (≥ 17:00)
+      if (r.type === 'Check-out') { out.pmOutLog = r.log; out.pmOutMins = r.mins; }
+    }
+  }
+  return out;
+}
+
 function getDayOfWeek(year, month, day) {
   const m = monthIndex[month];
   if (m === undefined) return -1;
@@ -115,34 +222,16 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
     const halfDayPeriod = holiday ? holiday.half_day_period : null;
 
     const dayLogs = logsByDay[i] || [];
-    let amIn = '', amOut = '', pmIn = '', pmOut = '';
-    let amInMins = null, amOutMins = null, pmInMins = null, pmOutMins = null;
 
-    dayLogs.forEach(l => {
-      // log_time is always 'YYYY-MM-DD HH:MM:SS' from DATE_FORMAT
-      const timePart = l.log_time.substring(11); // 'HH:MM:SS'
-      const [hours, minutes] = timePart.split(':').map(Number);
-      const mins = hours * 60 + minutes;
-
-      // Classify logs based on time of day
-      if (mins < 660) { // Before 11:00 AM
-        if (l.log_type === 'Check-in') { amIn = formatTime(l.log_time); amInMins = mins; }
-      }
-      
-      if (mins >= 660 && mins < 750) { // 11:00 AM to 12:30 PM
-        if (l.log_type === 'Check-out') { amOut = formatTime(l.log_time); amOutMins = mins; }
-        else if (l.log_type === 'Check-in' && !amIn) { amIn = formatTime(l.log_time); amInMins = mins; }
-      }
-
-      if (mins >= 750 && mins < 900) { // 12:30 PM to 3:00 PM
-        if (l.log_type === 'Check-in') { pmIn = formatTime(l.log_time); pmInMins = mins; }
-        else if (l.log_type === 'Check-out' && !amOut) { amOut = formatTime(l.log_time); amOutMins = mins; }
-      }
-
-      if (mins >= 900) { // After 3:00 PM
-        if (l.log_type === 'Check-out') { pmOut = formatTime(l.log_time); pmOutMins = mins; }
-      }
-    });
+    // Slot assignment driven by the Time Schedule Configuration
+    // (Admin → Time Schedule Configuration) instead of hard-coded bands.
+    const slots = classifyDayLogs(dayLogs, sched);
+    let amIn = slots.amInLog ? formatTime(slots.amInLog.log_time) : '';
+    let amOut = slots.amOutLog ? formatTime(slots.amOutLog.log_time) : '';
+    let pmIn = slots.pmInLog ? formatTime(slots.pmInLog.log_time) : '';
+    let pmOut = slots.pmOutLog ? formatTime(slots.pmOutLog.log_time) : '';
+    let amInMins = slots.amInMins, amOutMins = slots.amOutMins;
+    let pmInMins = slots.pmInMins, pmOutMins = slots.pmOutMins;
 
     // ─── Holiday / Suspension Display Logic ───────────────────
     let dayDisplay = `${i}`;
@@ -367,4 +456,4 @@ function generateDTRHtml(name, month, year, logs = [], schedule = null, holidays
     </div>`;
 }
 
-module.exports = { generateDTRHtml, formatTime };
+module.exports = { generateDTRHtml, formatTime, classifyDayLogs, DEFAULT_SCHEDULE };

@@ -1233,6 +1233,12 @@ ipcMain.handle('preview-import-file', async (event, filePath) => {
 
 ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) => {
   try {
+    // The binary ZKTeco user database (user.dat) contains users, not
+    // attendance records — route it to the user import (ZKTeco USB tab).
+    if (biometricService.isUserDatFile(filePath)) {
+      return upsertUsersFromUserDat(filePath, path.basename(filePath));
+    }
+
     // Parse the file
     const result = biometricService.parseAttendanceFile(filePath);
     if (!result.success) {
@@ -1245,8 +1251,11 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
     }
 
     // ── Deduplicate repeated scans ──────────────────────────────
-    // USB devices record every raw scan. If a user scans 2-3 times within
-    // a short window, we keep only the first scan per window (10 minutes).
+    // USB devices record every raw scan. Within a short window we keep the
+    // first scan per window — but per punch type, so a legitimate punch that
+    // follows a recent opposite-type punch (e.g. out at 12:31, back in at
+    // 12:33) is never swallowed by the window. Records with no explicit type
+    // (device didn't set the punch byte) dedup together as before.
     const DEDUP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
     // Group records by employee ID (or name if no ID — Timecard format)
@@ -1269,16 +1278,21 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
         return 0;
       });
 
-      let lastKeptTime = null;
+      // Track the last kept time per punch type (Check-in / Check-out / ''
+      // for untyped records) so opposite-type punches stay independent.
+      const lastKeptByType = {};
       for (const rec of empRecords) {
         const recTime = new Date(rec.logTime.replace(' ', 'T')).getTime();
-        if (lastKeptTime !== null && !isNaN(recTime) && !isNaN(lastKeptTime) && (recTime - lastKeptTime) < DEDUP_WINDOW_MS) {
-          // This scan is within the window of the previous kept scan — skip it
+        const typeKey = rec.logType === 'Check-in' || rec.logType === 'Check-out' ? rec.logType : '';
+        const lastKeptTime = lastKeptByType[typeKey];
+        if (lastKeptTime !== undefined && !isNaN(recTime) && !isNaN(lastKeptTime) && (recTime - lastKeptTime) < DEDUP_WINDOW_MS) {
+          // This scan is within the window of the previous kept scan of the
+          // same type — skip it
           filteredCount++;
           continue;
         }
         dedupedRecords.push(rec);
-        lastKeptTime = isNaN(recTime) ? null : recTime;
+        lastKeptByType[typeKey] = isNaN(recTime) ? undefined : recTime;
       }
     }
 
@@ -1307,6 +1321,8 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
 
     let insertedCount = 0;
     let skippedCount = 0;
+    let correctedCount = 0;
+    const unmatchedIds = new Set();
     let autoCreatedTeachers = new Set();
 
     // Cache for auto-created teachers (name → teacher_id) to avoid repeated DB lookups
@@ -1318,8 +1334,9 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
 
     // Prepare statements outside the loop for performance
     const insertTeacherStmt = db.prepare('INSERT INTO Teachers (name, biometric_id) VALUES (?, ?)');
-    const checkExistingStmt = db.prepare('SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?');
+    const checkExistingStmt = db.prepare('SELECT id, log_type FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?');
     const insertLogStmt = db.prepare('INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)');
+    const updateLogTypeStmt = db.prepare('UPDATE AttendanceLogs SET log_type = ? WHERE id = ?');
 
     // Wrap all imports in a transaction for performance
     const importTransaction = db.transaction(() => {
@@ -1361,6 +1378,9 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
         }
 
         if (!teacherId) {
+          // Remember unmatched biometric IDs so the user can fix the roster
+          const idNum = parseInt(record.employeeId, 10);
+          if (!isNaN(idNum) && idNum > 0) unmatchedIds.add(idNum);
           skippedCount++;
           continue;
         }
@@ -1388,10 +1408,17 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
           }
         }
 
-        // Check for duplicate
+        // Check for duplicate — and if the stored row has a different type
+        // than this import computed (e.g. rows imported before the punch-type
+        // fix: PM outs stored as 'Check-in'), correct it in place so the DTR
+        // picks it up instead of silently keeping the stale type.
         const existing = checkExistingStmt.get(teacherId, logTime);
 
         if (existing) {
+          if (existing.log_type !== logType) {
+            updateLogTypeStmt.run(logType, existing.id);
+            correctedCount++;
+          }
           skippedCount++;
           continue;
         }
@@ -1405,6 +1432,12 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
 
     const autoCreatedList = [...autoCreatedTeachers];
     let summary = `Imported ${insertedCount} new record(s). Skipped ${skippedCount} duplicate(s).`;
+    if (correctedCount > 0) {
+      summary += ` Corrected log type for ${correctedCount} existing record(s) (e.g. PM outs previously stored as check-ins).`;
+    }
+    if (unmatchedIds.length > 0) {
+      summary += ` ⚠ ${unmatchedIds.length} biometric ID(s) matched no teacher: ${unmatchedIds.join(', ')}.`;
+    }
     if (filteredCount > 0) {
       summary += ` Filtered ${filteredCount} repeated scan(s).`;
     }
@@ -1413,9 +1446,96 @@ ipcMain.handle('import-attendance-file', async (event, filePath, columnMapping) 
     }
     console.log('[Import]', summary);
     logActivity(currentSessionUser, 'Import Attendance', `File: "${path.basename(filePath)}". ${summary}`);
-    return { success: true, message: summary, synced: insertedCount, skipped: skippedCount, filtered: filteredCount, autoCreated: autoCreatedList.length, autoCreatedNames: autoCreatedList };
+    return { success: true, message: summary, synced: insertedCount, skipped: skippedCount, filtered: filteredCount, corrected: correctedCount, unmatchedIds: [...unmatchedIds].sort((a, b) => a - b), autoCreated: autoCreatedList.length, autoCreatedNames: autoCreatedList };
   } catch (err) {
     console.error('[Import] Error:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+/**
+ * Upsert users parsed from a binary ZKTeco user.dat (device user database)
+ * into the local Teachers table.
+ *
+ * - New biometric IDs are inserted as active teachers using the device's
+ *   stored name (already in "LAST, FIRST M." format).
+ * - Existing biometric IDs get their name synced from the device, keeping the
+ *   database consistent with the device's user list.
+ * - The teacher's device status is untouched, so existing enrollments,
+ *   schedules and attendance history are preserved.
+ *
+ * @param {string} filePath - absolute path to user.dat
+ * @param {string} fileName - display name for logs/activity
+ * @returns {{success: boolean, message: string, added?: number, updated?: number, skipped?: number, addedNames?: string[]}}
+ */
+function upsertUsersFromUserDat(filePath, fileName) {
+  try {
+    const parsed = biometricService.parseUserDat(filePath);
+    if (!parsed.success) {
+      return parsed;
+    }
+
+    const users = parsed.users;
+    const findTeacherStmt = db.prepare('SELECT id, name FROM Teachers WHERE biometric_id = ?');
+    const insertTeacherStmt = db.prepare("INSERT INTO Teachers (name, biometric_id, status) VALUES (?, ?, 'active')");
+    const updateNameStmt = db.prepare('UPDATE Teachers SET name = ? WHERE id = ?');
+
+    let added = 0;
+    let updated = 0;
+    const addedNames = [];
+    const updatedNames = [];
+
+    const tx = db.transaction(() => {
+      for (const u of users) {
+        const existing = findTeacherStmt.get(u.biometricId);
+        if (existing) {
+          // Same device, same person under a different name? Sync the name.
+          if (existing.name !== u.name) {
+            updateNameStmt.run(u.name, existing.id);
+            updated++;
+            updatedNames.push(`${u.name} (was "${existing.name}")`);
+          }
+        } else {
+          insertTeacherStmt.run(u.name, u.biometricId);
+          added++;
+          addedNames.push(`${u.name} (ID: ${u.biometricId})`);
+        }
+      }
+    });
+    tx();
+
+    const plural = n => (n === 1 ? 'teacher' : 'teachers');
+    let summary = `Imported ${users.length} user(s) from ${fileName}. Added ${added} ${plural(added)}, skipped ${users.length - added - updated} existing.`;
+    if (updated > 0) {
+      summary += ` Updated names for ${updated} ${plural(updated)}: ${updatedNames.join(', ')}.`;
+    }
+    if (added > 0 && addedNames.length <= 30) {
+      summary += ` New: ${addedNames.join(', ')}.`;
+    }
+    console.log('[Import Users]', summary);
+    logActivity(currentSessionUser, 'Import ZKTeco Users', `File: "${fileName}". ${summary}`);
+    return {
+      success: true,
+      message: summary,
+      kind: 'user-import',
+      total: users.length,
+      added,
+      updated,
+      skipped: users.length - added - updated,
+      addedNames,
+      updatedNames
+    };
+  } catch (err) {
+    console.error('[Import Users] Error:', err);
+    return { success: false, message: `Failed to import users: ${err.message}` };
+  }
+}
+
+ipcMain.handle('import-zkteco-users', async (event, filePath) => {
+  try {
+    return upsertUsersFromUserDat(filePath, path.basename(filePath));
+  } catch (err) {
+    console.error('[Import Users] IPC error:', err);
     return { success: false, message: err.message };
   }
 });
@@ -1789,6 +1909,8 @@ ipcMain.handle('delete-training', async (event, id) => {
 
 const LICENSE_SERVER = 'https://dtr-license-server.jencendencia.workers.dev';
 const LICENSE_FILE = path.join(app.getPath('userData'), 'license.json');
+const OFFLINE_GRACE_DAYS = 3; // how long an activated app may run without reaching the server
+const OFFLINE_GRACE_MS = OFFLINE_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
 function getMachineId() {
   const hash = crypto.createHash('sha256');
@@ -1827,7 +1949,53 @@ ipcMain.handle('check-license', async () => {
   if (!stored || !stored.licenseKey || !stored.activatedAt) {
     return { activated: false };
   }
-  return { activated: true, licenseKey: stored.licenseKey, machineId: getMachineId() };
+
+  const machineId = stored.machineId || getMachineId();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  let result;
+  try {
+    // Re-validate with the same machineId registered at activation, so the
+    // server never mistakes a hardware change for a brand-new device.
+    const response = await fetch(`${LICENSE_SERVER}/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: stored.licenseKey, machineId }),
+      signal: controller.signal
+    });
+    result = await response.json();
+  } catch (_) {
+    // No server response (offline / timed out): allow within the grace period.
+    // If this is the first check since the app update, start the grace window
+    // now so existing clients are never locked out the moment they update.
+    const lastValidated = stored.lastValidatedAt
+      ? new Date(stored.lastValidatedAt).getTime()
+      : Date.now();
+    if (Date.now() - lastValidated < OFFLINE_GRACE_MS) {
+      // Stamp once only when the reference is missing (first launch after the
+      // update) — otherwise the grace window would slide forever for clients
+      // who open the app offline regularly, and they'd never be locked out.
+      if (!stored.lastValidatedAt) {
+        stored.lastValidatedAt = new Date().toISOString();
+        saveLicense(stored);
+      }
+      return { activated: true, licenseKey: stored.licenseKey, machineId };
+    }
+    return { activated: false, message: 'Cannot reach the activation server and the offline grace period has expired. Please check your internet connection.' };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (result.valid) {
+    // Refresh the offline-grace timestamp so paying clients stay unlocked.
+    stored.lastValidatedAt = new Date().toISOString();
+    saveLicense(stored);
+    return { activated: true, licenseKey: stored.licenseKey, machineId };
+  }
+
+  // Server reached and rejected this key (revoked / expired / over device limit)
+  return { activated: false, revoked: true, message: result.message || 'This license key is no longer valid.' };
 });
 
 ipcMain.handle('activate-license', async (event, licenseKey) => {
@@ -1844,7 +2012,8 @@ ipcMain.handle('activate-license', async (event, licenseKey) => {
       saveLicense({
         licenseKey: licenseKey.trim().toUpperCase(),
         machineId,
-        activatedAt: new Date().toISOString()
+        activatedAt: new Date().toISOString(),
+        lastValidatedAt: new Date().toISOString()
       });
     }
 

@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const { generateDTRHtml } = require('./dtrGenerator');
+const { generateDTRHtml, classifyDayLogs } = require('./dtrGenerator');
 
 let currentUser = null;
 let timeSchedule = null;
@@ -24,11 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   applyBranding();
   setupThemeToggles();
-  checkLicense().then(activated => {
-    if (activated) {
+  checkLicense().then(res => {
+    if (res.activated) {
       setupLogin();
     } else {
-      setupActivation();
+      setupActivation(res.message);
     }
   });
 });
@@ -114,20 +114,30 @@ function applyBranding() {
 
 async function checkLicense() {
   try {
-    const res = await ipcRenderer.invoke('check-license');
-    return res.activated;
+    return await ipcRenderer.invoke('check-license');
   } catch (_) {
-    return false;
+    return { activated: false };
   }
 }
 
-function setupActivation() {
+function setupActivation(initialMessage) {
   document.getElementById('activation-overlay').style.display = 'flex';
   document.getElementById('login-overlay').style.display = 'none';
 
   const form = document.getElementById('activation-form');
   const errEl = document.getElementById('activation-error');
   const btn = document.getElementById('btn-activate');
+
+  if (initialMessage) {
+    errEl.textContent = initialMessage;
+  }
+
+  const keyInput = document.getElementById('activation-key');
+  if (keyInput) {
+    keyInput.addEventListener('input', () => {
+      if (errEl.textContent) errEl.textContent = '';
+    });
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -396,27 +406,61 @@ function getDashboardView() {
 
         <!-- ZKTeco USB Panel -->
         <div id="source-zkteco-usb-panel" style="display:none;">
-          <div class="step-panel-row">
-            <span style="font-size:22px;">🔌</span>
-            <div style="flex:1;">
-              <p class="step-title">Step 1: Export from ZKTeco Device via USB</p>
-              <p class="step-desc">Insert USB → Menu → Data Mgmt → USB Download → Export AttLog as .dat or .csv</p>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button id="btn-zkteco-flow-att" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;background:#10b981;color:white;">📋 Import Attendance (AttLog)</button>
+            <button id="btn-zkteco-flow-users" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-weight:600;font-size:12px;background:var(--surface-alt);color:var(--text-muted);">👤 Import Users (user.dat)</button>
+          </div>
+
+          <!-- Attendance flow (default) -->
+          <div id="zkteco-usb-att-flow">
+            <div class="step-panel-row">
+              <span style="font-size:22px;">🔌</span>
+              <div style="flex:1;">
+                <p class="step-title">Step 1: Export from ZKTeco Device via USB</p>
+                <p class="step-desc">Insert USB → Menu → Data Mgmt → USB Download → Export AttLog as .dat or .csv</p>
+              </div>
+            </div>
+            <div class="step-panel-row">
+              <span style="font-size:22px;">💾</span>
+              <div style="flex:1;">
+                <p class="step-title">Step 2: Plug USB into Computer</p>
+                <p class="step-desc">Open the USB drive and locate the attendance file (e.g. attlog.dat or .csv file)</p>
+              </div>
+            </div>
+            <div class="step-panel-row">
+              <span style="font-size:22px;">📥</span>
+              <div style="flex:1;">
+                <p class="step-title">Step 3: Import into DTR System</p>
+                <p class="step-desc">Select the file from the USB drive to import attendance records</p>
+              </div>
+              <button id="btn-import-zkteco-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
             </div>
           </div>
-          <div class="step-panel-row">
-            <span style="font-size:22px;">💾</span>
-            <div style="flex:1;">
-              <p class="step-title">Step 2: Plug USB into Computer</p>
-              <p class="step-desc">Open the USB drive and locate the attendance file (e.g. attlog.dat or .csv file)</p>
+
+          <!-- User list (user.dat) flow -->
+          <div id="zkteco-usb-users-flow" style="display:none;">
+            <div class="step-panel-row">
+              <span style="font-size:22px;">🔌</span>
+              <div style="flex:1;">
+                <p class="step-title">Step 1: Export User List from ZKTeco Device via USB</p>
+                <p class="step-desc">Insert USB → Menu → Data Mgmt → USB Export → Download User Data (creates user.dat)</p>
+              </div>
             </div>
-          </div>
-          <div class="step-panel-row">
-            <span style="font-size:22px;">📥</span>
-            <div style="flex:1;">
-              <p class="step-title">Step 3: Import into DTR System</p>
-              <p class="step-desc">Select the file from the USB drive to import attendance records</p>
+            <div class="step-panel-row">
+              <span style="font-size:22px;">💾</span>
+              <div style="flex:1;">
+                <p class="step-title">Step 2: Plug USB into Computer</p>
+                <p class="step-desc">Open the USB drive and locate the user database file (user.dat)</p>
+              </div>
             </div>
-            <button id="btn-import-zkteco-usb" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
+            <div class="step-panel-row">
+              <span style="font-size:22px;">📥</span>
+              <div style="flex:1;">
+                <p class="step-title">Step 3: Import Users into DTR System</p>
+                <p class="step-desc">Select user.dat — every device user becomes a teacher with their Biometric ID (existing teachers are kept and their names synced)</p>
+              </div>
+              <button id="btn-import-zkteco-users" class="btn-import-file" style="padding:8px 16px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">Import File</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1072,6 +1116,26 @@ function setupDashboardView() {
 
   let selectedFilePath = null;
   let activeSource = 'ngteco-cloud';
+  let lastPreview = null;   // result of the last preview-import-file call
+
+  // ── ZKTeco USB sub-flow: attendance (AttLog) vs users (user.dat) ──
+  const zktecoAttFlow = document.getElementById('zkteco-usb-att-flow');
+  const zktecoUsersFlow = document.getElementById('zkteco-usb-users-flow');
+  const btnZktecoFlowAtt = document.getElementById('btn-zkteco-flow-att');
+  const btnZktecoFlowUsers = document.getElementById('btn-zkteco-flow-users');
+  let zktecoUsbFlow = 'attendance';
+
+  function setZktecoUsbFlow(flow) {
+    zktecoUsbFlow = flow;
+    zktecoAttFlow.style.display = flow === 'attendance' ? '' : 'none';
+    zktecoUsersFlow.style.display = flow === 'users' ? '' : 'none';
+    btnZktecoFlowAtt.style.background = flow === 'attendance' ? '#10b981' : 'var(--surface-alt)';
+    btnZktecoFlowAtt.style.color = flow === 'attendance' ? 'white' : 'var(--text-muted)';
+    btnZktecoFlowUsers.style.background = flow === 'users' ? '#10b981' : 'var(--surface-alt)';
+    btnZktecoFlowUsers.style.color = flow === 'users' ? 'white' : 'var(--text-muted)';
+  }
+  btnZktecoFlowAtt.addEventListener('click', () => setZktecoUsbFlow('attendance'));
+  btnZktecoFlowUsers.addEventListener('click', () => setZktecoUsbFlow('users'));
 
   // ── Source Tab Switching ──
   function setActiveSource(source) {
@@ -1099,6 +1163,8 @@ function setupDashboardView() {
     previewCard.style.display = 'none';
     resultCard.style.display = 'none';
     selectedFilePath = null;
+    lastPreview = null;
+    setZktecoUsbFlow('attendance');
   }
 
   tabNgtecoCloud.addEventListener('click', () => setActiveSource('ngteco-cloud'));
@@ -1119,6 +1185,9 @@ function setupDashboardView() {
     } else if (activeSource === 'ngteco-usb') {
       dialogTitle = 'Select NGTeco USB Attendance File';
       sourceLabelText = 'Source: NGTeco USB Device';
+    } else if (activeSource === 'zkteco-usb') {
+      dialogTitle = zktecoUsbFlow === 'users' ? 'Select ZKTeco User Database (user.dat)' : 'Select ZKTeco USB Attendance File';
+      sourceLabelText = 'Source: ZKTeco USB Device';
     } else {
       dialogTitle = 'Select ZKTeco USB Attendance File';
       sourceLabelText = 'Source: ZKTeco USB Device';
@@ -1136,6 +1205,13 @@ function setupDashboardView() {
     if (!preview.success) {
       alert('Error reading file: ' + preview.message);
       return;
+    }
+    lastPreview = preview;
+
+    // Auto-correct the ZKTeco USB sub-flow to match the actual file type, so
+    // the instructions always describe what is being imported
+    if (activeSource === 'zkteco-usb') {
+      setZktecoUsbFlow(preview.isUserDat ? 'users' : 'attendance');
     }
 
     // Show preview table
@@ -1158,7 +1234,24 @@ function setupDashboardView() {
     }
 
     // Show column mapping detection
-    if (preview.isTimecardFormat) {
+    if (preview.isUserDat) {
+      // Binary ZKTeco user database (user.dat) — show user-list info
+      let mapHtml = '<strong>👤 ZKTeco User Database Detected</strong><br>';
+      mapHtml += `Device users: <strong>${preview.totalRows}</strong> of ${preview.capacity} slot(s) | Biometric ID → <strong>teacher Biometric ID</strong> | Name → <strong>teacher name</strong><br>`;
+      mapHtml += `<span style="color:var(--accent);font-size:11px;">ℹ️ Importing adds new teachers and syncs names for existing Biometric IDs. Attendance history is not touched.</span>`;
+      mappingInfo.innerHTML = mapHtml;
+      mappingInfo.className = 'mapping-info-panel';
+    } else if (preview.isAttlogFormat) {
+      // Standard ZKTeco attlog.dat — header-less punch rows with biometric ID
+      let mapHtml = '<strong>📋 ZKTeco Attendance Log (AttLog) Detected</strong><br>';
+      mapHtml += `Punch records: <strong>${preview.totalRows}</strong> | Employees: <strong>${preview.employeeCount}</strong> | Biometric ID → <strong>teacher Biometric ID</strong><br>`;
+      if (preview.duplicateRows > 0) {
+        mapHtml += `<span style="color:var(--text-muted);">${preview.duplicateRows} duplicate scan row(s) will be collapsed.</span><br>`;
+      }
+      mapHtml += `<span style="color:var(--text-muted);">Repeated scans within 10 minutes are filtered (per in/out type). Teachers are matched by Biometric ID; unmatched IDs are auto-created from the device user list or skipped.</span>`;
+      mappingInfo.innerHTML = mapHtml;
+      mappingInfo.className = 'mapping-info-panel usb-mapping';
+    } else if (preview.isTimecardFormat) {
       // Timecard Report format — show employee and pay period info
       let mapHtml = '<strong>📋 Timecard Report Format Detected</strong><br>';
       if (preview.employeeCount > 1) {
@@ -1196,6 +1289,7 @@ function setupDashboardView() {
   document.getElementById('btn-import-cloud').addEventListener('click', handleImportClick);
   document.getElementById('btn-import-ngteco-usb').addEventListener('click', handleImportClick);
   document.getElementById('btn-import-zkteco-usb').addEventListener('click', handleImportClick);
+  document.getElementById('btn-import-zkteco-users').addEventListener('click', handleImportClick);
 
   // Confirm import
   btnConfirm.addEventListener('click', async () => {
@@ -1204,7 +1298,14 @@ function setupDashboardView() {
     btnConfirm.disabled = true;
     btnConfirm.textContent = 'Importing...';
 
-    const res = await ipcRenderer.invoke('import-attendance-file', selectedFilePath);
+    // Route by detected file type: the binary ZKTeco user database imports
+    // users, everything else imports attendance records
+    let res;
+    if (lastPreview && lastPreview.isUserDat) {
+      res = await ipcRenderer.invoke('import-zkteco-users', selectedFilePath);
+    } else {
+      res = await ipcRenderer.invoke('import-attendance-file', selectedFilePath);
+    }
 
     btnConfirm.disabled = false;
     btnConfirm.textContent = '✓ Import to Database';
@@ -1217,7 +1318,15 @@ function setupDashboardView() {
       resultMessage.textContent = res.message;
       resultMessage.style.color = '#374151';
       let detailsHtml = '';
+      if (res.kind === 'user-import') {
+        detailsHtml += `<span style="color:#10b981;">● ${res.added} new teacher(s) added</span><br>`;
+        if (res.updated > 0) detailsHtml += `<span style="color:#3b82f6;">● ${res.updated} name(s) updated: ${(res.updatedNames || []).join(', ')}</span><br>`;
+        if (res.skipped > 0) detailsHtml += `<span style="color:#6b7280;">● ${res.skipped} already in the database (skipped)</span><br>`;
+        detailsHtml += `<span style="color:#6b7280;font-size:11px;">Total device users: ${res.total}. Enroll fingerprints on the Teachers page ("Enroll All" or per teacher).</span><br>`;
+      } else {
       if (res.synced > 0) detailsHtml += `<span style="color:#10b981;">● ${res.synced} new record(s) added</span><br>`;
+      if (res.corrected > 0) detailsHtml += `<span style="color:#3b82f6;">● ${res.corrected} existing record(s) had their type corrected (Check-in ↔ Check-out)</span><br>`;
+      if (res.unmatchedIds && res.unmatchedIds.length > 0) detailsHtml += `<span style="color:#ef4444;">● Biometric ID(s) matched no teacher: ${res.unmatchedIds.join(', ')} — import user.dat (ZKTeco USB tab) or add them on the Teachers page.</span><br>`;
       if (res.filtered > 0) detailsHtml += `<span style="color:#6366f1;">● ${res.filtered} repeated scan(s) filtered</span><br>`;
       if (res.skipped > 0) detailsHtml += `<span style="color:#f59e0b;">● ${res.skipped} duplicate(s) skipped</span><br>`;
       if (res.autoCreated > 0) {
@@ -1226,6 +1335,7 @@ function setupDashboardView() {
       if (res.unmatched > 0) {
         detailsHtml += `<span style="color:#ef4444;">● ${res.unmatched} unmatched ID(s): ${(res.unmatchedIds || []).join(', ')}</span><br>`;
         detailsHtml += `<span style="color:#6b7280;font-size:11px;">Tip: Make sure the Employee ID in the export matches the Biometric ID (or name matches) in the Teachers table.</span>`;
+      }
       }
       resultDetails.innerHTML = detailsHtml;
     } else {
@@ -1243,6 +1353,7 @@ function setupDashboardView() {
   btnCancel.addEventListener('click', () => {
     previewCard.style.display = 'none';
     selectedFilePath = null;
+    lastPreview = null;
   });
 }
 
@@ -2472,32 +2583,15 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
     const isHalfDay = holiday && holiday.is_half_day;
     const halfDayPeriod = holiday ? holiday.half_day_period : null;
 
-    let amIn = '', amOut = '', pmIn = '', pmOut = '';
-    let amInMins = null, amOutMins = null, pmInMins = null, pmOutMins = null;
-
-    dayLogs.forEach(l => {
-      const timePart = l.log_time.substring(11);
-      const [hours, minutes] = timePart.split(':').map(Number);
-      const mins = hours * 60 + minutes;
-      
-      if (mins < 660) {
-        if (l.log_type === 'Check-in') { amIn = formatTimeOnly(l.log_time); amInMins = mins; }
-      }
-      
-      if (mins >= 660 && mins < 750) {
-        if (l.log_type === 'Check-out') { amOut = formatTimeOnly(l.log_time); amOutMins = mins; }
-        else if (l.log_type === 'Check-in' && !amIn) { amIn = formatTimeOnly(l.log_time); amInMins = mins; }
-      }
-
-      if (mins >= 750 && mins < 900) {
-        if (l.log_type === 'Check-in') { pmIn = formatTimeOnly(l.log_time); pmInMins = mins; }
-        else if (l.log_type === 'Check-out' && !amOut) { amOut = formatTimeOnly(l.log_time); amOutMins = mins; }
-      }
-
-      if (mins >= 900) {
-        if (l.log_type === 'Check-out') { pmOut = formatTimeOnly(l.log_time); pmOutMins = mins; }
-      }
-    });
+    // Slot assignment driven by the Time Schedule Configuration (Admin →
+    // Time Schedule Configuration) — same rules as dtrGenerator.
+    const slots = classifyDayLogs(dayLogs, timeSchedule);
+    let amIn = slots.amInLog ? formatTimeOnly(slots.amInLog.log_time) : '';
+    let amOut = slots.amOutLog ? formatTimeOnly(slots.amOutLog.log_time) : '';
+    let pmIn = slots.pmInLog ? formatTimeOnly(slots.pmInLog.log_time) : '';
+    let pmOut = slots.pmOutLog ? formatTimeOnly(slots.pmOutLog.log_time) : '';
+    let amInMins = slots.amInMins, amOutMins = slots.amOutMins;
+    let pmInMins = slots.pmInMins, pmOutMins = slots.pmOutMins;
 
     // Calculate undertime with holiday awareness
     let utStr = '';
@@ -2668,7 +2762,7 @@ function displayTeacherLogs(logs, teacherId, month, year, timeSchedule, holidays
         return;
       }
       const dayLogs = logsByDay[day] || [];
-      showEditDayModal(day, dayLogs, teacherId, logsByDay, currentMonth, currentYear);
+      showEditDayModal(day, dayLogs, teacherId, logsByDay, currentMonth, currentYear, timeSchedule);
     });
   });
 
@@ -2837,7 +2931,7 @@ function timeToMinutes(timeStr) {
   return h * 60 + m;
 }
 
-function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
+function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year, schedule) {
   // Create a simple modal for editing
   const modalHtml = `
     <div id="edit-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;">
@@ -2857,54 +2951,15 @@ function showEditDayModal(day, dayLogs, teacherId, logsByDay, month, year) {
   const modal = document.getElementById('edit-modal');
   const logsList = document.getElementById('edit-logs-list');
 
-  // Classify logs by expected type (AM In, AM Out, PM In, PM Out)
+  // Slot assignment driven by the Time Schedule Configuration — same rules
+  // as dtrGenerator/displayTeacherLogs.
+  const daySlots = classifyDayLogs(dayLogs, schedule);
   const logsMap = {
-    'AM In': null,
-    'AM Out': null,
-    'PM In': null,
-    'PM Out': null
+    'AM In': daySlots.amInLog,
+    'AM Out': daySlots.amOutLog,
+    'PM In': daySlots.pmInLog,
+    'PM Out': daySlots.pmOutLog
   };
-
-  dayLogs.forEach(log => {
-    const timeStr = log.log_time;
-    let logDate;
-    
-    // Parse log_time to get minutes
-    if (typeof timeStr === 'string' && timeStr.includes('-')) {
-      const [datePart, timePart] = timeStr.split(' ');
-      if (datePart && timePart) {
-        const [year, month, day] = datePart.split('-').map(Number);
-        const timeComponents = timePart.split(':').map(Number);
-        const [hours, minutes] = timeComponents;
-        logDate = new Date(year, month - 1, day, hours, minutes, 0);
-      }
-    } else {
-      logDate = new Date(timeStr);
-    }
-    
-    if (!isNaN(logDate.getTime())) {
-      const mins = logDate.getHours() * 60 + logDate.getMinutes();
-      
-      // Classification logic matching displayTeacherLogs/dtrGenerator
-      if (mins < 660) { // Before 11:00 AM
-        if (log.log_type === 'Check-in') { logsMap['AM In'] = log; }
-      }
-      
-      if (mins >= 660 && mins < 750) { // 11:00 AM to 12:30 PM
-        if (log.log_type === 'Check-out') { logsMap['AM Out'] = log; }
-        else if (log.log_type === 'Check-in' && !logsMap['AM In']) { logsMap['AM In'] = log; }
-      }
-
-      if (mins >= 750 && mins < 900) { // 12:30 PM to 3:00 PM
-        if (log.log_type === 'Check-in') { logsMap['PM In'] = log; }
-        else if (log.log_type === 'Check-out' && !logsMap['AM Out']) { logsMap['AM Out'] = log; }
-      }
-
-      if (mins >= 900) { // After 3:00 PM
-        if (log.log_type === 'Check-out') { logsMap['PM Out'] = log; }
-      }
-    }
-  });
 
   // Build table showing all 4 expected slots (no per-row buttons)
   let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';

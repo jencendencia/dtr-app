@@ -42,7 +42,17 @@ class BiometricService {
       let timecardResult = null;
 
       if (ext === '.csv' || ext === '.dat') {
+        // The ZKTeco device user database (user.dat) is binary — reading it as
+        // text produces garbage, so detect and route it before decoding.
+        if (this.isUserDatFile(filePath)) {
+          return { success: false, message: 'This is a ZKTeco user database (user.dat) with no attendance logs. Use Import File on the ZKTeco USB tab to import the user list instead.' };
+        }
         const content = fs.readFileSync(filePath, 'utf-8');
+        // Standard ZKTeco USB attendance export (attlog.dat): header-less,
+        // tab-separated punch rows — needs its own parser, not CSV mapping.
+        if (this._isZktecoAttlog(content)) {
+          return this._parseAttlog(content, filePath);
+        }
         // Check for Timecard Report format before standard CSV parsing
         if (this._isTimecardReport(content)) {
           isTimecardFormat = true;
@@ -117,7 +127,15 @@ class BiometricService {
       let timecardResult = null;
 
       if (ext === '.csv' || ext === '.dat') {
+        // The ZKTeco device user database (user.dat) is binary — reading it as
+        // text produces garbage, so detect and route it before decoding.
+        if (this.isUserDatFile(filePath)) {
+          return this._previewUserDat(filePath);
+        }
         const content = fs.readFileSync(filePath, 'utf-8');
+        if (this._isZktecoAttlog(content)) {
+          return this._previewAttlog(content);
+        }
         if (this._isTimecardReport(content)) {
           isTimecardFormat = true;
           timecardResult = this._parseTimecardCSV(content);
@@ -486,6 +504,188 @@ class BiometricService {
   /**
    * Parse CSV/DAT content. Supports comma, tab, and semicolon delimiters.
    */
+  /**
+   * Detect the standard ZKTeco USB attendance export (attlog.dat).
+   *
+   * Format: one punch per line, tab-separated, NO header row:
+   *   `123   2026-09-01 06:00:13   1   0   1   0`
+   *   (biometric ID, timestamp, status, punch 0=in/1=out, verify, workcode)
+   *
+   * Because there is no header row, this file cannot go through the regular
+   * CSV mapping path — the first data line would be mistaken for headers.
+   * Detection requires the 2nd column of the first line to be a full
+   * `YYYY-MM-DD HH:MM:SS` timestamp, which header rows never are.
+   */
+  _isZktecoAttlog(content) {
+    const lines = String(content || '').split(/\r?\n/).filter(l => l.trim());
+    if (lines.length === 0) return false;
+    // Scan the first few lines; a majority must look like punch rows.
+    let matches = 0;
+    const sample = lines.slice(0, 5);
+    for (const line of sample) {
+      const cols = line.split('\t').map(c => c.trim());
+      if (cols.length >= 2 && /^\d+$/.test(cols[0]) && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(cols[1])) {
+        matches++;
+      }
+    }
+    return sample.length > 0 && matches / sample.length >= 0.6;
+  }
+
+  /**
+   * Parse a standard ZKTeco USB attendance export (attlog.dat).
+   *
+   * Two layouts exist:
+   *   A) 6 columns: `id \t YYYY-MM-DD HH:MM:SS \t status \t punch \t verify \t workcode`
+   *      → punch byte (0=in, 1=out) gives the explicit log type.
+   *   B) 2 columns: `id \t YYYY-MM-DD HH:MM:SS` (merged exports)
+   *      → no type info; punches are raw scans, so each employee's punches per
+   *      day are classified by ALTERNATING in chronological order (1st = In,
+   *      2nd = Out, 3rd = In, ...). Double-taps within 10 seconds collapse to
+   *      one punch first so they don't break the in/out parity.
+   */
+  _parseAttlog(content, filePath) {
+    try {
+      const lines = String(content || '').split(/\r?\n/).filter(l => l.trim());
+      const rawRecords = [];
+      const seen = new Set();      // id|timestamp — collapse identical rows
+      let duplicateRows = 0;
+      let skippedRows = 0;
+
+      for (const line of lines) {
+        const cols = line.split('\t').map(c => c.trim());
+        if (cols.length < 2) { skippedRows++; continue; }
+        const empId = cols[0];
+        if (!/^\d+$/.test(empId)) { skippedRows++; continue; }
+        const ts = cols[1];
+        const logTime = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(ts)
+          ? ts
+          : this._parseDateTime(ts);
+        if (!logTime) { skippedRows++; continue; }
+
+        const key = `${empId}|${logTime}`;
+        if (seen.has(key)) { duplicateRows++; continue; }
+        seen.add(key);
+
+        // Punch byte (4th column): 0 = check-in, 1 = check-out. Layout B files
+        // have no 4th column — logType stays '' and is assigned by alternation.
+        let logType = '';
+        if (cols.length >= 4 && (cols[3] === '0' || cols[3] === '1')) {
+          logType = cols[3] === '0' ? 'Check-in' : 'Check-out';
+        }
+
+        rawRecords.push({
+          employeeId: String(parseInt(empId, 10)),
+          logTime,
+          logType,
+          state: cols.length >= 3 ? cols[2] : ''
+        });
+      }
+
+      // ── Layout B: classify raw punches by alternating in/out per day ──
+      // Only for day-groups where the device provided no punch byte at all;
+      // groups with explicit types keep them untouched.
+      let collapsedRows = 0;
+      const groups = {};
+      for (const r of rawRecords) {
+        const dayKey = `${r.employeeId}|${r.logTime.substring(0, 10)}`;
+        (groups[dayKey] = groups[dayKey] || []).push(r);
+      }
+      const DOUBLE_TAP_MS = 60 * 1000; // device double-tap: same punch registered twice (sensor retries can be tens of seconds apart)
+      const finalRecords = [];
+      for (const dayKey of Object.keys(groups)) {
+        const group = groups[dayKey];
+        if (group.some(r => r.logType)) {           // explicit types — keep as-is
+          finalRecords.push(...group);
+          continue;
+        }
+        group.sort((a, b) => a.logTime.localeCompare(b.logTime));
+        // Collapse double-taps (consecutive punches within 60s) to the first,
+        // otherwise they consume an in/out pair and shift every later punch.
+        // Real device re-scans can be tens of seconds apart (sensor retries),
+        // so the window is generous; genuine in/out pairs are minutes apart.
+        const collapsed = [];
+        let lastTime = null;
+        for (const r of group) {
+          const t = new Date(r.logTime.replace(' ', 'T')).getTime();
+          if (lastTime !== null && !isNaN(t) && !isNaN(lastTime) && (t - lastTime) <= DOUBLE_TAP_MS) {
+            collapsedRows++;
+            continue;
+          }
+          collapsed.push(r);
+          lastTime = isNaN(t) ? null : t;
+        }
+        // Alternate: 1st punch = Check-in, 2nd = Check-out, 3rd = Check-in, ...
+        collapsed.forEach((r, idx) => {
+          r.logType = idx % 2 === 0 ? 'Check-in' : 'Check-out';
+        });
+        // Odd-punch day: the final scan of a day is almost always the
+        // departure. If alternation leaves the last punch as a Check-in but
+        // it falls in the PM-out window (>= 17:00), it's a departure whose
+        // pairing scan is missing — flip it to Check-out so the DTR's PM Out
+        // fills. Midday odd endings (e.g. teacher returned at 12:57 and
+        // forgot the final out) keep Check-in so PM In still shows.
+        if (collapsed.length % 2 === 1) {
+          const last = collapsed[collapsed.length - 1];
+          const [h, m] = last.logTime.substring(11).split(':').map(Number);
+          if (!isNaN(h) && h * 60 + m >= 17 * 60) {
+            last.logType = 'Check-out';
+          }
+        }
+        finalRecords.push(...collapsed);
+      }
+
+      const records = finalRecords;
+      if (records.length === 0) {
+        return { success: false, message: 'No punch records found in the AttLog file.' };
+      }
+
+      const employeeCount = new Set(records.map(r => r.employeeId)).size;
+      const fileName = filePath ? path.basename(filePath) : 'attlog.dat';
+      console.log(`[BiometricService] AttLog: ${records.length} punch record(s) for ${employeeCount} employee(s) from ${fileName}` +
+        (duplicateRows > 0 ? ` (${duplicateRows} duplicate row(s) collapsed)` : '') +
+        (collapsedRows > 0 ? `, ${collapsedRows} double-tap(s) collapsed` : '') +
+        (skippedRows > 0 ? `, ${skippedRows} malformed row(s) skipped` : ''));
+      return {
+        success: true,
+        data: records,
+        headers: ['Biometric ID', 'Timestamp', 'Status', 'Punch', 'Verify', 'Workcode'],
+        mapping: { employeeId: 'Biometric ID', name: null, date: null, timeIn: null, timeOut: null, timestamp: 'Timestamp', state: 'Punch' },
+        rawRowCount: lines.length,
+        isAttlogFormat: true,
+        employeeCount,
+        duplicateRows,
+        skippedRows,
+        message: `Parsed ${records.length} punch record(s) for ${employeeCount} employee(s) from ${fileName}.`
+      };
+    } catch (err) {
+      console.error('[BiometricService] AttLog parse error:', err);
+      return { success: false, message: `Failed to parse AttLog file: ${err.message}` };
+    }
+  }
+
+  /**
+   * Build a preview payload for a standard ZKTeco attlog.dat file.
+   */
+  _previewAttlog(content) {
+    const result = this._parseAttlog(content);
+    if (!result.success) return result;
+    return {
+      success: true,
+      headers: ['Biometric ID', 'Date', 'Time', 'Punch Type'],
+      preview: result.data.slice(0, 10).map(r => ({
+        'Biometric ID': r.employeeId,
+        'Date': r.logTime.substring(0, 10),
+        'Time': r.logTime.substring(11),
+        'Punch Type': r.logType || '(classified on import)'
+      })),
+      totalRows: result.data.length,
+      mapping: { employeeId: 'Biometric ID', name: null, date: null, timeIn: null, timeOut: null, timestamp: 'Timestamp', state: 'Punch' },
+      isAttlogFormat: true,
+      employeeCount: result.employeeCount,
+      duplicateRows: result.duplicateRows
+    };
+  }
+
   _parseCSV(content) {
     const lines = content.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) return [];
@@ -782,6 +982,103 @@ class BiometricService {
     }
 
     return null;
+  }
+
+  // ─── ZKTeco binary user.dat (device user database) ──────────
+
+  /**
+   * Detect whether a file is the binary ZKTeco device user database
+   * (user.dat, exported via Menu → Data Mgmt → USB Export → Download User
+   * Data). Unlike attendance .dat exports, this file is binary — NUL-padded
+   * fixed-size records — so reading it as UTF-8 text produces garbage.
+   * Detection is structural (not extension-based) to avoid misdetection.
+   */
+  isUserDatFile(filePath) {
+    try {
+      const USER_RECORD_SIZE = 72;
+      const buf = fs.readFileSync(filePath);
+      if (buf.length < USER_RECORD_SIZE || buf.length % USER_RECORD_SIZE !== 0) return false;
+      const sampleEnd = Math.min(buf.length, 4096);
+      let nulls = 0;
+      for (let i = 0; i < sampleEnd; i++) {
+        if (buf[i] === 0) nulls++;
+      }
+      // Records are heavily NUL-padded; text CSVs never look like this.
+      return nulls / sampleEnd > 0.3;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Parse the binary ZKTeco device user database (user.dat).
+   *
+   * Layout (verified against a real device export, 21,600 bytes = 300 slots
+   * × 72 bytes):
+   *   offset 0   (uint16 LE)   slot index (1-based)
+   *   offset 11-39 (29 bytes)  user name (ASCII, NUL-terminated)
+   *   offset 39                marker byte (0x01)
+   *   offset 48-55 (8 bytes)   biometric/user ID (ASCII digits, NUL-terminated)
+   *   all other bytes          padding / internal flags
+   *
+   * Empty slots (deleted or never-enrolled users) have no name and no ID and
+   * are skipped, so the file's two populated regions (with unused slots
+   * between them) are handled transparently.
+   *
+   * @param {string} filePath
+   * @returns {{success: boolean, users?: Array<{name: string, biometricId: number}>, message?: string, capacity?: number}}
+   */
+  parseUserDat(filePath) {
+    try {
+      const USER_RECORD_SIZE = 72;
+      const buf = fs.readFileSync(filePath);
+      const capacity = Math.floor(buf.length / USER_RECORD_SIZE);
+      if (capacity === 0) {
+        return { success: false, message: 'File is too small to be a ZKTeco user database (user.dat).' };
+      }
+
+      const users = [];
+      for (let i = 0; i < capacity; i++) {
+        const base = i * USER_RECORD_SIZE;
+        const name = buf.subarray(base + 11, base + 40).toString('ascii').split('\0')[0].trim();
+        const id = buf.subarray(base + 48, base + 56).toString('ascii').split('\0')[0].trim();
+        if (!name || !id) continue;                    // empty / deleted slot
+        if (!/^[\x20-\x7E]+$/.test(name)) continue;    // not a text record
+        if (!/^\d+$/.test(id)) continue;               // ID must be numeric
+        users.push({ name: name.replace(/\s+/g, ' ').trim(), biometricId: parseInt(id, 10) });
+      }
+
+      if (users.length === 0) {
+        return { success: false, message: 'No user records found — this may not be a ZKTeco user.dat file.' };
+      }
+
+      console.log(`[BiometricService] Parsed ${users.length} user(s) from user.dat (capacity ${capacity}).`);
+      return { success: true, users, capacity, message: `Parsed ${users.length} user(s) from ${capacity} device slot(s).` };
+    } catch (err) {
+      console.error('[BiometricService] user.dat parse error:', err);
+      return { success: false, message: `Failed to parse user.dat: ${err.message}` };
+    }
+  }
+
+  /**
+   * Build a preview payload for a binary ZKTeco user.dat file (device user
+   * database) so the dashboard can show the user list before importing.
+   */
+  _previewUserDat(filePath) {
+    const result = this.parseUserDat(filePath);
+    if (!result.success) return result;
+    return {
+      success: true,
+      headers: ['Name', 'Biometric ID'],
+      preview: result.users.slice(0, 10).map(u => ({
+        'Name': u.name,
+        'Biometric ID': String(u.biometricId)
+      })),
+      totalRows: result.users.length,
+      mapping: { employeeId: 'Biometric ID', name: 'Name', date: null, timeIn: null, timeOut: null, timestamp: null, state: null },
+      isUserDat: true,
+      capacity: result.capacity
+    };
   }
 }
 
