@@ -7,3 +7,10 @@ build/icon.png
 
 # GitHub token config (auto-updater)
 github_token.json
+
+# Biometric device data files (contain real user data - never commit)
+user.dat
+*.dat
+
+# electron-updater release metadata
+latest.yml
