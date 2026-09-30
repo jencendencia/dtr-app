@@ -137,12 +137,43 @@ db.exec(`
       serial_number TEXT UNIQUE,
       ip_address TEXT NOT NULL,
       port INTEGER NOT NULL DEFAULT 4370,
-      device_type TEXT NOT NULL DEFAULT 'zkteco' CHECK(device_type IN ('zkteco', 'ngteco')),
+      device_type TEXT NOT NULL DEFAULT 'zkteco' CHECK(device_type IN ('zkteco', 'ngteco', 'granding')),
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
       last_sync TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
   `);
+
+  // Migration: allow the 'granding' device type on databases created before
+  // Granding support was added. SQLite can't alter a CHECK constraint, so the
+  // table is rebuilt and copied when its constraint is still the old one.
+  try {
+    const legacyTypeCheck = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'BiometricDevices'"
+    ).get();
+    if (legacyTypeCheck && legacyTypeCheck.sql && !legacyTypeCheck.sql.includes("'granding'")) {
+      db.exec(`
+        ALTER TABLE BiometricDevices RENAME TO BiometricDevices_old;
+        CREATE TABLE BiometricDevices (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          serial_number TEXT UNIQUE,
+          ip_address TEXT NOT NULL,
+          port INTEGER NOT NULL DEFAULT 4370,
+          device_type TEXT NOT NULL DEFAULT 'zkteco' CHECK(device_type IN ('zkteco', 'ngteco', 'granding')),
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+          last_sync TEXT,
+          created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+        INSERT INTO BiometricDevices (id, name, serial_number, ip_address, port, device_type, status, last_sync, created_at)
+          SELECT id, name, serial_number, ip_address, port, device_type, status, last_sync, created_at FROM BiometricDevices_old;
+        DROP TABLE BiometricDevices_old;
+      `);
+      console.log('Migration: rebuilt BiometricDevices to allow the granding device type');
+    }
+  } catch (_migrationErr) {
+    // Fresh database (table already has 'granding') or migration not needed
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS TeacherTimeSchedule (

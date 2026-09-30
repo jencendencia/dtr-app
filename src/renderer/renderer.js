@@ -602,6 +602,7 @@ function getDevicesView() {
             <select id="device-type" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
               <option value="zkteco">ZKTeco</option>
               <option value="ngteco">NGTeco</option>
+              <option value="granding">Granding</option>
             </select>
           </div>
         </div>
@@ -666,6 +667,20 @@ function getTeachersView() {
       <!-- Device Status Banner -->
       <div id="teachers-device-status" class="card" style="margin-bottom:20px;border-left:4px solid #3b82f6;">
         <p style="margin:0;font-size:13px;" id="teachers-device-status-text">Checking device connection...</p>
+      </div>
+
+      <!-- Enroll by Name -->
+      <div class="card" style="margin-bottom:20px;">
+        <h3>Enroll Teacher by Name</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Search for the teacher by name, confirm their ID, then insert it into the ZKTeco device.</p>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-group" style="flex:1;min-width:220px;margin-bottom:0;">
+            <label style="font-weight:500;font-size:13px;">Search Teacher Name</label>
+            <input type="text" id="enroll-search-input" placeholder="Type to search..." autocomplete="off" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);">
+          </div>
+          <button id="btn-enroll-by-name" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;height:36px;display:none;">Enroll to Biometric</button>
+        </div>
+        <div id="enroll-search-results" style="margin-top:12px;"></div>
       </div>
 
       <!-- Add Teacher Form -->
@@ -736,6 +751,27 @@ function getTeachersView() {
               <button id="btn-cancel-edit-teacher" style="padding:8px 16px;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;cursor:pointer;">Cancel</button>
               <button id="btn-save-edit-teacher" style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Save Changes</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transfer to Biometric Modal -->
+      <div id="confirm-enroll-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:1100;">
+        <div style="background:var(--modal-bg);color:var(--modal-text);padding:20px;border-radius:8px;max-width:440px;width:90%;border:1px solid var(--border);">
+          <h3 style="margin:0 0 4px;">Transfer to Biometric</h3>
+          <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px;">Search the teacher to get their ID, then insert it to the ZKTeco device.</p>
+          <div id="confirm-enroll-connect-warn" style="display:none;color:#b45309;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px;">⚠ No device connected — connect on the Biometric Devices page first. You can still search and select; the insert needs a connection.</div>
+          <input type="text" id="confirm-enroll-search" placeholder="Search teacher by name..." autocomplete="off" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);margin-bottom:10px;">
+          <div id="confirm-enroll-search-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:10px;display:none;"></div>
+          <div style="padding:12px;background:var(--surface-alt);border-radius:6px;margin-bottom:12px;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Selected teacher(s) &amp; Biometric ID</div>
+            <div id="confirm-enroll-selected"></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">To use a different ID, close this and use Edit on the teacher's row first.</div>
+          </div>
+          <span id="confirm-enroll-status" style="display:block;font-size:13px;min-height:18px;"></span>
+          <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button id="btn-cancel-confirm-enroll" style="padding:8px 16px;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;cursor:pointer;">Cancel</button>
+            <button id="btn-do-confirm-enroll" style="padding:8px 20px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Transfer to Biometric</button>
           </div>
         </div>
       </div>
@@ -1401,7 +1437,7 @@ async function setupDevicesView() {
         <td style="padding:8px;font-family:monospace;font-size:12px;cursor:pointer;">${d.serial_number || '—'}</td>
         <td style="padding:8px;font-family:monospace;cursor:pointer;">${d.ip_address}</td>
         <td style="padding:8px;cursor:pointer;">${d.port}</td>
-        <td style="padding:8px;cursor:pointer;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:${d.device_type === 'zkteco' ? 'rgba(59,130,246,0.1);color:#3b82f6' : 'rgba(16,185,129,0.1);color:#10b981'}">${d.device_type.toUpperCase()}</span></td>
+        <td style="padding:8px;cursor:pointer;"><span style="padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:${d.device_type === 'zkteco' ? 'rgba(59,130,246,0.1);color:#3b82f6' : d.device_type === 'granding' ? 'rgba(245,158,11,0.1);color:#f59e0b' : 'rgba(16,185,129,0.1);color:#10b981'}">${d.device_type.toUpperCase()}</span></td>
         <td style="padding:8px;color:var(--text-muted);cursor:pointer;font-size:12px;">${lastSync}</td>
         <td style="padding:8px;text-align:center;">
           <button class="btn-select-device" data-device-id="${d.id}" style="padding:4px 10px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;">Select</button>
@@ -1535,7 +1571,7 @@ async function setupDevicesView() {
     const statusEl = document.getElementById('connection-status');
     statusEl.innerHTML = '<span style="color:#f59e0b;">● Connecting...</span>';
 
-    const result = await ipcRenderer.invoke('connect-device', selectedDevice.ip_address, selectedDevice.port);
+    const result = await ipcRenderer.invoke('connect-device', selectedDevice.ip_address, selectedDevice.port, selectedDevice.device_type || 'zkteco');
     if (result.success) {
       showToast('Connected to device');
     } else {
@@ -1558,7 +1594,7 @@ async function setupDevicesView() {
     document.getElementById('btn-sync-attendance').disabled = true;
 
     const skipUnmatched = !!(document.getElementById('chk-skip-unmatched') && document.getElementById('chk-skip-unmatched').checked);
-    const result = await ipcRenderer.invoke('sync-device-attendance', { skipUnmatched });
+    const result = await ipcRenderer.invoke('sync-device-attendance', { skipUnmatched, deviceId: selectedDevice ? selectedDevice.id : null });
     document.getElementById('btn-sync-attendance').disabled = false;
     checkConnectionStatus();
 
@@ -1611,7 +1647,7 @@ async function setupDevicesView() {
 
     // Now re-sync
     const skipUnmatched = !!(document.getElementById('chk-skip-unmatched') && document.getElementById('chk-skip-unmatched').checked);
-    const result = await ipcRenderer.invoke('sync-device-attendance', { skipUnmatched });
+    const result = await ipcRenderer.invoke('sync-device-attendance', { skipUnmatched, deviceId: selectedDevice ? selectedDevice.id : null });
     checkConnectionStatus();
 
     // Show result
@@ -1686,11 +1722,14 @@ async function setupDevicesView() {
 }
 
 async function setupTeachersView() {
+  let enrollDeviceConnected = false;
+
   async function checkDeviceStatus() {
     const status = await ipcRenderer.invoke('get-device-status');
     const statusText = document.getElementById('teachers-device-status-text');
     const btnEnrollAll = document.getElementById('btn-enroll-all');
     const banner = document.getElementById('teachers-device-status');
+    enrollDeviceConnected = !!(status && status.connected);
 
     if (status.connected) {
       statusText.innerHTML = '<span style="color:#10b981;font-weight:600;">● Device Connected</span> — You can enroll teachers to the ZKTeco device.';
@@ -1754,17 +1793,7 @@ async function setupTeachersView() {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const teacherId = parseInt(btn.getAttribute('data-teacher-id'));
-        const teacherName = btn.getAttribute('data-teacher-name');
-        btn.disabled = true;
-        btn.textContent = 'Enrolling...';
-        const result = await ipcRenderer.invoke('enroll-teacher-to-device', teacherId);
-        btn.disabled = false;
-        btn.textContent = 'Enroll';
-        if (result.success) {
-          showToast(`"${teacherName}" enrolled to device`);
-        } else {
-          showToast('Enrollment failed: ' + result.message);
-        }
+        openConfirmEnrollModal(teacherId);
       });
     });
 
@@ -1957,6 +1986,180 @@ async function setupTeachersView() {
       checkDeviceStatus();
     });
   }
+
+  // ── Enroll by Name: search, then confirm the ID before inserting ──
+  const enrollSearchInput = document.getElementById('enroll-search-input');
+  const enrollSearchResults = document.getElementById('enroll-search-results');
+  const btnEnrollByName = document.getElementById('btn-enroll-by-name');
+  let enrollCandidates = [];
+  let enrollSelectedIds = new Set();
+
+  async function runEnrollSearch() {
+    const q = enrollSearchInput.value.toLowerCase().trim();
+    const allTeachers = await ipcRenderer.invoke('get-teachers');
+    enrollCandidates = q
+      ? allTeachers.filter(t => t.name.toLowerCase().includes(q))
+      : allTeachers;
+    renderEnrollSearch();
+  }
+
+  function renderEnrollSearch() {
+    if (enrollCandidates.length === 0) {
+      enrollSearchResults.innerHTML = '<p style="color:var(--text-muted);font-size:13px;font-style:italic;margin:0;">No matching teacher found.</p>';
+      btnEnrollByName.style.display = 'none';
+      return;
+    }
+    let html = '<div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">';
+    enrollCandidates.forEach(t => {
+      const checked = enrollSelectedIds.has(t.id);
+      const isActive = (t.status || 'active') === 'active';
+      html += `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;">
+        <input type="checkbox" class="enroll-candidate" data-teacher-id="${t.id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">
+        <span style="flex:1;font-weight:500;">${t.name}</span>
+        <span style="font-family:monospace;color:var(--text-muted);">ID ${t.biometric_id}</span>
+        <span style="font-size:11px;color:${isActive ? '#10b981' : '#9ca3af'};">${isActive ? 'Active' : 'Inactive'}</span>
+      </label>`;
+    });
+    html += '</div>';
+    enrollSearchResults.innerHTML = html;
+
+    enrollSearchResults.querySelectorAll('.enroll-candidate').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const id = parseInt(cb.getAttribute('data-teacher-id'), 10);
+        if (cb.checked) enrollSelectedIds.add(id); else enrollSelectedIds.delete(id);
+        btnEnrollByName.style.display = enrollSelectedIds.size > 0 ? '' : 'none';
+      });
+    });
+  }
+
+  enrollSearchInput.addEventListener('input', runEnrollSearch);
+  enrollSearchInput.addEventListener('focus', runEnrollSearch);
+
+  btnEnrollByName.addEventListener('click', () => {
+    if (enrollSelectedIds.size === 0) return;
+    openConfirmEnrollModal([...enrollSelectedIds]);
+  });
+
+  // ── Transfer to Biometric modal: search teacher inside, then insert their ID ──
+  const confirmSearchInput = document.getElementById('confirm-enroll-search');
+  const confirmSearchResults = document.getElementById('confirm-enroll-search-results');
+  const confirmSelectedBox = document.getElementById('confirm-enroll-selected');
+  let confirmTeacherIds = [];
+  let confirmAllTeachers = [];
+
+  function renderConfirmSelection() {
+    if (confirmTeacherIds.length === 0) {
+      confirmSelectedBox.innerHTML = '<div style="font-size:13px;color:var(--text-muted);font-style:italic;">No teacher selected yet — search above.</div>';
+      return;
+    }
+    confirmSelectedBox.innerHTML = confirmTeacherIds.map(tid => {
+      const t = confirmAllTeachers.find(x => x.id === tid);
+      if (!t) return '';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;margin-top:6px;">
+        <span style="font-size:14px;font-weight:600;">${t.name}</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:${(t.status || 'active') === 'active' ? '#10b981' : '#9ca3af'};">${(t.status || 'active') === 'active' ? 'Active' : 'Inactive'}</span>
+          <span style="font-family:monospace;font-weight:700;color:var(--text);background:var(--border);padding:3px 8px;border-radius:4px;">ID ${t.biometric_id}</span>
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderConfirmSearch(q) {
+    const term = q.toLowerCase().trim();
+    const matches = term ? confirmAllTeachers.filter(t => t.name.toLowerCase().includes(term)) : confirmAllTeachers;
+    if (matches.length === 0) {
+      confirmSearchResults.style.display = 'block';
+      confirmSearchResults.innerHTML = '<p style="color:var(--text-muted);font-size:13px;font-style:italic;margin:0;padding:8px 10px;">No matching teacher found.</p>';
+      return;
+    }
+    confirmSearchResults.style.display = 'block';
+    confirmSearchResults.innerHTML = matches.map(t => {
+      const checked = confirmTeacherIds.includes(t.id);
+      return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;margin:0;">
+        <input type="checkbox" class="confirm-enroll-match" data-teacher-id="${t.id}" ${checked ? 'checked' : ''} style="width:15px;height:15px;cursor:pointer;">
+        <span style="flex:1;font-weight:500;">${t.name}</span>
+        <span style="font-family:monospace;color:var(--text-muted);">ID ${t.biometric_id}</span>
+        <span style="font-size:11px;color:${(t.status || 'active') === 'active' ? '#10b981' : '#9ca3af'};">${(t.status || 'active') === 'active' ? 'Active' : 'Inactive'}</span>
+      </label>`;
+    }).join('');
+    confirmSearchResults.querySelectorAll('.confirm-enroll-match').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const tid = parseInt(cb.getAttribute('data-teacher-id'), 10);
+        if (cb.checked) { if (!confirmTeacherIds.includes(tid)) confirmTeacherIds.push(tid); }
+        else confirmTeacherIds = confirmTeacherIds.filter(x => x !== tid);
+        renderConfirmSelection();
+      });
+    });
+  }
+
+  async function openConfirmEnrollModal(teacherIds) {
+    // Open regardless of connection — the warning banner inside explains,
+    // and the main process re-validates the connection at insert time.
+    const warnEl = document.getElementById('confirm-enroll-connect-warn');
+    if (warnEl) warnEl.style.display = enrollDeviceConnected ? 'none' : 'block';
+    confirmAllTeachers = await ipcRenderer.invoke('get-teachers');
+    confirmTeacherIds = Array.isArray(teacherIds) ? teacherIds.filter(id => confirmAllTeachers.some(t => t.id === id)) : [];
+    confirmSearchInput.value = '';
+    confirmSearchResults.style.display = 'none';
+    document.getElementById('confirm-enroll-status').textContent = '';
+    renderConfirmSelection();
+    renderConfirmSearch('');
+    confirmSearchResults.style.display = 'none';
+    document.getElementById('confirm-enroll-modal').style.display = 'flex';
+    confirmSearchInput.focus();
+  }
+
+  confirmSearchInput.addEventListener('input', () => renderConfirmSearch(confirmSearchInput.value));
+  confirmSearchInput.addEventListener('focus', () => renderConfirmSearch(confirmSearchInput.value));
+
+  document.getElementById('btn-cancel-confirm-enroll').addEventListener('click', () => {
+    document.getElementById('confirm-enroll-modal').style.display = 'none';
+  });
+
+  document.getElementById('btn-do-confirm-enroll').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-do-confirm-enroll');
+    const statusEl = document.getElementById('confirm-enroll-status');
+
+    if (confirmTeacherIds.length === 0) {
+      statusEl.style.color = '#ef4444';
+      statusEl.textContent = 'Select a teacher first — search by name above.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Transferring...';
+    statusEl.textContent = '';
+    let okCount = 0;
+    let failCount = 0;
+    const failures = [];
+
+    for (const tid of confirmTeacherIds) {
+      const result = await ipcRenderer.invoke('enroll-teacher-to-device', tid);
+      if (result.success) {
+        okCount++;
+      } else {
+        failCount++;
+        failures.push(result.message || 'unknown error');
+      }
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Transfer to Biometric';
+
+    if (failCount === 0) {
+      document.getElementById('confirm-enroll-modal').style.display = 'none';
+      enrollSelectedIds.clear();
+      btnEnrollByName.style.display = 'none';
+      enrollSearchInput.value = '';
+      enrollSearchResults.innerHTML = '';
+      showToast(okCount === 1 ? 'ID inserted to biometric device' : `${okCount} teacher(s) inserted to biometric device`);
+      loadTeachers();
+    } else {
+      statusEl.style.color = '#ef4444';
+      statusEl.textContent = `Failed: ${failures.join('; ')}`;
+    }
+  });
 
   // Initial load
   await loadTeachers();
@@ -3659,3 +3862,403 @@ function setupLogsView() {
   
   refreshLogsTable();
 }
+
+// ─── HIDDEN DEVICE CLOCK UTILITY (Ctrl+Shift+I) ─────────────
+// Intentionally has no button or menu entry anywhere in the UI. Pressing
+// Ctrl+Shift+I opens a modal that first asks for the admin password, then
+// shows a calendar + time picker to transfer a chosen local time to the
+// connected ZKTeco device's clock over LAN.
+
+let dtModalEl = null;
+let dtState = null;
+
+function ensureDeviceTimeModal() {
+  if (dtModalEl) return dtModalEl;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'device-time-modal';
+  overlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:2000;';
+  overlay.innerHTML = `
+    <div style="background:var(--modal-bg);color:var(--modal-text);padding:24px;border-radius:10px;width:420px;max-width:92vw;border:1px solid var(--border);box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+      <div id="dt-step-password">
+        <h3 style="margin:0 0 6px;">🔒 Admin Access</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Device clock settings are restricted. Enter the admin password to continue.</p>
+        <input type="password" id="dt-password" placeholder="Admin password" autocomplete="off" style="width:100%;box-sizing:border-box;padding:9px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);">
+        <div id="dt-password-error" style="color:#ef4444;font-size:12px;min-height:16px;margin:6px 0 10px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="dt-cancel" style="padding:8px 14px;background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="dt-unlock" style="padding:8px 14px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">Unlock</button>
+        </div>
+      </div>
+
+      <div id="dt-step-picker" style="display:none;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button id="dt-tab-clock" style="flex:1;padding:7px 0;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:white;font-size:13px;font-weight:600;cursor:pointer;">🕐 Clock</button>
+          <button id="dt-tab-att" style="flex:1;padding:7px 0;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);font-size:13px;cursor:pointer;">🕒 Attendance</button>
+        </div>
+        <div id="dt-pane-clock">
+        <h3 style="margin:0 0 4px;">🕐 Set Device Clock</h3>
+        <p id="dt-time-note" style="font-size:12px;color:var(--text-muted);margin:0 0 10px;"></p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <button id="dt-prev-month" style="width:28px;height:28px;background:var(--surface-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">‹</button>
+          <strong id="dt-month-label" style="font-size:14px;"></strong>
+          <button id="dt-next-month" style="width:28px;height:28px;background:var(--surface-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">›</button>
+        </div>
+        <div id="dt-calendar" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:12px;margin-bottom:12px;"></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:13px;">
+          <span style="color:var(--text-muted);">Time</span>
+          <input type="number" id="dt-hour" min="0" max="23" style="width:58px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);text-align:center;">
+          <span>:</span>
+          <input type="number" id="dt-minute" min="0" max="59" style="width:58px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);text-align:center;">
+          <span>:</span>
+          <input type="number" id="dt-second" min="0" max="59" style="width:58px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);text-align:center;">
+        </div>
+        <div id="dt-picker-error" style="color:#ef4444;font-size:12px;min-height:16px;margin:4px 0 8px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="dt-cancel-2" style="padding:8px 14px;background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">Cancel</button>
+          <button id="dt-transfer" style="padding:8px 14px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">⇄ Transfer Time to Device</button>
+        </div>
+        </div>
+
+        <div id="dt-pane-att" style="display:none;">
+          <h3 style="margin:0 0 4px;">🕒 Record Attendance</h3>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Search the teacher, pick the punch date, time and whether it is a check-in or check-out, then record it. The punch is written to the app's attendance records (device firmware does not accept punch uploads); if the device is connected, the teacher's enrollment on it is verified.</p>
+          <input type="text" id="dt-att-search" placeholder="Search teacher by name or ID..." autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);margin-bottom:8px;">
+          <div id="dt-att-results" style="display:none;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;"></div>
+          <div id="dt-att-selected" style="margin-bottom:10px;"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;flex-wrap:wrap;">
+            <span style="color:var(--text-muted);">Date</span>
+            <input type="date" id="dt-att-date" style="padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);">
+            <span style="color:var(--text-muted);">Time</span>
+            <input type="number" id="dt-att-hour" min="0" max="23" style="width:52px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);text-align:center;">
+            <span>:</span>
+            <input type="number" id="dt-att-minute" min="0" max="59" style="width:52px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);text-align:center;">
+            <span>:</span>
+            <input type="number" id="dt-att-second" min="0" max="59" style="width:52px;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);text-align:center;">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:13px;">
+            <span style="color:var(--text-muted);">Punch</span>
+            <button id="dt-att-in" style="padding:6px 14px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:white;font-size:12px;font-weight:600;cursor:pointer;">Check-in</button>
+            <button id="dt-att-out" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text);font-size:12px;cursor:pointer;">Check-out</button>
+          </div>
+          <div id="dt-att-error" style="color:#ef4444;font-size:12px;min-height:16px;margin:4px 0 8px;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button id="dt-cancel-3" style="padding:8px 14px;background:var(--surface-alt);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;">Cancel</button>
+            <button id="dt-att-transfer" style="padding:8px 14px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">⇄ Record Attendance</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  dtModalEl = overlay;
+  setupDeviceTimeModal(overlay);
+  return overlay;
+}
+
+function openDeviceTimeModal() {
+  const overlay = ensureDeviceTimeModal();
+  overlay.style.display = 'flex';
+
+  // Always start at the password gate with a clean slate
+  document.getElementById('dt-step-password').style.display = '';
+  document.getElementById('dt-step-picker').style.display = 'none';
+  document.getElementById('dt-password').value = '';
+  document.getElementById('dt-password-error').textContent = '';
+  setTimeout(() => document.getElementById('dt-password').focus(), 50);
+}
+
+function closeDeviceTimeModal() {
+  if (dtModalEl) dtModalEl.style.display = 'none';
+}
+
+function setupDeviceTimeModal(overlay) {
+  const unlock = async () => {
+    const pwInput = document.getElementById('dt-password');
+    const errEl = document.getElementById('dt-password-error');
+    errEl.textContent = '';
+    const res = await ipcRenderer.invoke('verify-admin-password', pwInput.value);
+    if (!res.success) {
+      errEl.textContent = res.message || 'Incorrect password.';
+      pwInput.select();
+      return;
+    }
+    // Unlock → show the date/time picker, prefilled with now
+    const now = new Date();
+    dtState = { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
+    document.getElementById('dt-hour').value = now.getHours();
+    document.getElementById('dt-minute').value = now.getMinutes();
+    document.getElementById('dt-second').value = now.getSeconds();
+    document.getElementById('dt-step-password').style.display = 'none';
+    document.getElementById('dt-step-picker').style.display = '';
+    document.getElementById('dt-picker-error').textContent = '';
+    showTab('clock');
+    dtRenderCalendar();
+    dtShowTimeNote();
+
+    // Attendance tab defaults: today's date/time, Check-in, no selection
+    const nowA = new Date();
+    document.getElementById('dt-att-date').value =
+      `${nowA.getFullYear()}-${String(nowA.getMonth() + 1).padStart(2, '0')}-${String(nowA.getDate()).padStart(2, '0')}`;
+    document.getElementById('dt-att-hour').value = nowA.getHours();
+    document.getElementById('dt-att-minute').value = nowA.getMinutes();
+    document.getElementById('dt-att-second').value = nowA.getSeconds();
+    attPunchType = 'Check-in';
+    setPunchButtons();
+    attSelected = null;
+    renderAttSelected();
+    attResults.style.display = 'none';
+    attSearch.value = '';
+    ipcRenderer.invoke('get-teachers').then(teachers => { attTeachers = teachers || []; }).catch(() => { attTeachers = []; });
+  };
+
+  document.getElementById('dt-unlock').addEventListener('click', unlock);
+  document.getElementById('dt-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') unlock();
+  });
+
+  document.getElementById('dt-cancel').addEventListener('click', closeDeviceTimeModal);
+  document.getElementById('dt-cancel-2').addEventListener('click', closeDeviceTimeModal);
+
+  document.getElementById('dt-prev-month').addEventListener('click', () => {
+    dtState.month--;
+    if (dtState.month < 0) { dtState.month = 11; dtState.year--; }
+    dtRenderCalendar();
+  });
+  document.getElementById('dt-next-month').addEventListener('click', () => {
+    dtState.month++;
+    if (dtState.month > 11) { dtState.month = 0; dtState.year++; }
+    dtRenderCalendar();
+  });
+
+  document.getElementById('dt-transfer').addEventListener('click', dtTransferToDevice);
+
+  // ── Tabs: Clock / Attendance ──
+  const tabClock = document.getElementById('dt-tab-clock');
+  const tabAtt = document.getElementById('dt-tab-att');
+  const showTab = (which) => {
+    const clock = which === 'clock';
+    tabClock.style.background = clock ? 'var(--accent)' : 'var(--surface-alt)';
+    tabClock.style.color = clock ? 'white' : 'var(--text)';
+    tabAtt.style.background = clock ? 'var(--surface-alt)' : 'var(--accent)';
+    tabAtt.style.color = clock ? 'var(--text)' : 'white';
+    document.getElementById('dt-pane-clock').style.display = clock ? '' : 'none';
+    document.getElementById('dt-pane-att').style.display = clock ? 'none' : '';
+  };
+  tabClock.addEventListener('click', () => showTab('clock'));
+  tabAtt.addEventListener('click', () => showTab('att'));
+
+  // ── Attendance tab: search teacher → select → punch type → transfer ──
+  let attTeachers = [];
+  let attSelected = null;
+  let attPunchType = 'Check-in';
+  const attSearch = document.getElementById('dt-att-search');
+  const attResults = document.getElementById('dt-att-results');
+  const attSelectedBox = document.getElementById('dt-att-selected');
+
+  const renderAttSelected = () => {
+    if (!attSelected) {
+      attSelectedBox.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic;">No teacher selected — search above.</div>';
+      return;
+    }
+    attSelectedBox.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;">
+      <span style="font-size:13px;font-weight:600;">${attSelected.name}</span>
+      <span style="font-family:monospace;font-weight:700;color:var(--text);background:var(--border);padding:2px 8px;border-radius:4px;">ID ${attSelected.biometric_id}</span>
+    </div>`;
+  };
+
+  const renderAttResults = () => {
+    const q = attSearch.value.toLowerCase().trim();
+    const matches = attTeachers.filter(t =>
+      t.name.toLowerCase().includes(q) || String(t.biometric_id).includes(q));
+    if (matches.length === 0) {
+      attResults.style.display = 'block';
+      attResults.innerHTML = '<p style="color:var(--text-muted);font-size:12px;font-style:italic;margin:0;padding:8px 10px;">No matching teacher found.</p>';
+      return;
+    }
+    attResults.style.display = 'block';
+    attResults.innerHTML = matches.slice(0, 30).map(t => `
+      <div data-att-id="${t.id}" style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;">
+        <span style="flex:1;font-weight:500;">${t.name}</span>
+        <span style="font-family:monospace;color:var(--text-muted);">ID ${t.biometric_id}</span>
+      </div>`).join('');
+    attResults.querySelectorAll('[data-att-id]').forEach(row => {
+      row.addEventListener('click', () => {
+        attSelected = attTeachers.find(t => t.id === parseInt(row.getAttribute('data-att-id'), 10)) || null;
+        attResults.style.display = 'none';
+        attSearch.value = '';
+        renderAttSelected();
+      });
+    });
+  };
+
+  attSearch.addEventListener('input', renderAttResults);
+  attSearch.addEventListener('focus', renderAttResults);
+
+  const setPunchButtons = () => {
+    const inBtn = document.getElementById('dt-att-in');
+    const outBtn = document.getElementById('dt-att-out');
+    const isIn = attPunchType === 'Check-in';
+    inBtn.style.background = isIn ? 'var(--accent)' : 'var(--surface-alt)';
+    inBtn.style.color = isIn ? 'white' : 'var(--text)';
+    outBtn.style.background = !isIn ? 'var(--accent)' : 'var(--surface-alt)';
+    outBtn.style.color = !isIn ? 'white' : 'var(--text)';
+  };
+  document.getElementById('dt-att-in').addEventListener('click', () => { attPunchType = 'Check-in'; setPunchButtons(); });
+  document.getElementById('dt-att-out').addEventListener('click', () => { attPunchType = 'Check-out'; setPunchButtons(); });
+  document.getElementById('dt-cancel-3').addEventListener('click', closeDeviceTimeModal);
+
+  document.getElementById('dt-att-transfer').addEventListener('click', async () => {
+    const errEl = document.getElementById('dt-att-error');
+    const btn = document.getElementById('dt-att-transfer');
+    errEl.textContent = '';
+    if (!attSelected) {
+      errEl.textContent = 'Select a teacher first — search by name or ID.';
+      return;
+    }
+    const clamp = (v, max) => {
+      const n = parseInt(v, 10);
+      return isNaN(n) ? 0 : Math.min(Math.max(n, 0), max);
+    };
+    const dateVal = document.getElementById('dt-att-date').value; // yyyy-mm-dd
+    if (!dateVal) {
+      errEl.textContent = 'Pick a date.';
+      return;
+    }
+    const [y, mo, d] = dateVal.split('-').map(Number);
+    const punchDate = new Date(y, mo - 1, d,
+      clamp(document.getElementById('dt-att-hour').value, 23),
+      clamp(document.getElementById('dt-att-minute').value, 59),
+      clamp(document.getElementById('dt-att-second').value, 59));
+
+    btn.disabled = true;
+    btn.textContent = 'Transferring...';
+    try {
+      const res = await ipcRenderer.invoke('set-device-attendance', {
+        biometricId: attSelected.biometric_id,
+        date: punchDate.toISOString(),
+        punchType: attPunchType
+      });
+      if (res && res.success) {
+        showToast(`Attendance recorded: ${attSelected.name}, ${attPunchType}, ${punchDate.toLocaleString()}`);
+        if (res.enrolledOnDevice === false) {
+          setTimeout(() => showToast(`⚠ ${attSelected.name} (ID ${attSelected.biometric_id}) is NOT enrolled on the biometric device`, 6000), 400);
+        }
+        closeDeviceTimeModal();
+      } else {
+        errEl.textContent = (res && res.message) || 'Failed to record attendance.';
+      }
+    } catch (err) {
+      errEl.textContent = 'Recording failed: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⇄ Record Attendance';
+    }
+  });
+}
+
+function dtRenderCalendar() {
+  const cal = document.getElementById('dt-calendar');
+  if (!cal || !dtState) return;
+
+  document.getElementById('dt-month-label').textContent =
+    new Date(dtState.year, dtState.month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+
+  const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  let html = dayNames.map(d => `<div style="text-align:center;font-weight:600;color:var(--text-muted);padding:4px 0;">${d}</div>`).join('');
+
+  const firstDow = new Date(dtState.year, dtState.month, 1).getDay();
+  const daysInMonth = new Date(dtState.year, dtState.month + 1, 0).getDate();
+  const today = new Date();
+
+  for (let i = 0; i < firstDow; i++) html += '<div></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isSelected = dtState.day === d;
+    const isToday = today.getFullYear() === dtState.year && today.getMonth() === dtState.month && today.getDate() === d;
+    let style = 'text-align:center;padding:6px 0;cursor:pointer;border-radius:6px;color:var(--text);';
+    if (isSelected) style += 'background:var(--accent);color:white;font-weight:700;';
+    else if (isToday) style += 'border:1px solid var(--accent);';
+    html += `<div data-dt-day="${d}" style="${style}">${d}</div>`;
+  }
+  cal.innerHTML = html;
+
+  cal.querySelectorAll('[data-dt-day]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      dtState.day = parseInt(cell.getAttribute('data-dt-day'), 10);
+      dtRenderCalendar();
+    });
+  });
+}
+
+async function dtShowTimeNote() {
+  const noteEl = document.getElementById('dt-time-note');
+  noteEl.textContent = 'Checking device clock...';
+  try {
+    const status = await ipcRenderer.invoke('get-device-status');
+    if (!status || !status.connected) {
+      noteEl.textContent = '⚠ Not connected to a device — connect on the Biometric Devices page first.';
+      return;
+    }
+    const res = await ipcRenderer.invoke('get-device-time');
+    if (res && res.success && res.time) {
+      const devTime = new Date(res.time);
+      const pcTime = new Date();
+      noteEl.textContent = `Device clock: ${devTime.toLocaleString()}  •  PC time: ${pcTime.toLocaleString()}`;
+    } else {
+      noteEl.textContent = '⚠ Could not read device clock: ' + ((res && res.message) || 'unknown error');
+    }
+  } catch (err) {
+    noteEl.textContent = '⚠ Could not read device clock: ' + err.message;
+  }
+}
+
+async function dtTransferToDevice() {
+  const errEl = document.getElementById('dt-picker-error');
+  const btn = document.getElementById('dt-transfer');
+  errEl.textContent = '';
+
+  const clamp = (v, max) => {
+    const n = parseInt(v, 10);
+    return isNaN(n) ? 0 : Math.min(Math.max(n, 0), max);
+  };
+  const h = clamp(document.getElementById('dt-hour').value, 23);
+  const m = clamp(document.getElementById('dt-minute').value, 59);
+  const s = clamp(document.getElementById('dt-second').value, 59);
+
+  const status = await ipcRenderer.invoke('get-device-status');
+  if (!status || !status.connected) {
+    errEl.textContent = 'Not connected to a device. Open Biometric Devices and connect first.';
+    return;
+  }
+
+  const date = new Date(dtState.year, dtState.month, dtState.day, h, m, s);
+  btn.disabled = true;
+  btn.textContent = 'Transferring...';
+  try {
+    const res = await ipcRenderer.invoke('set-device-time', date.toISOString());
+    if (res && res.success) {
+      // Read the clock back so the admin can confirm the transfer took effect
+      const check = await ipcRenderer.invoke('get-device-time');
+      const now = check && check.success && check.time ? new Date(check.time).toLocaleTimeString() : '';
+      showToast('Device clock set' + (now ? ` — device now shows ${now}` : ''));
+      dtShowTimeNote();
+    } else {
+      errEl.textContent = (res && res.message) || 'Failed to set device time.';
+    }
+  } catch (err) {
+    errEl.textContent = 'Transfer failed: ' + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⇄ Transfer Time to Device';
+  }
+}
+
+// Global shortcut: Ctrl+Shift+I opens the hidden device clock utility.
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'I' || e.key === 'i')) {
+    e.preventDefault();
+    openDeviceTimeModal();
+  } else if (e.key === 'Escape' && dtModalEl && dtModalEl.style.display !== 'none') {
+    closeDeviceTimeModal();
+  }
+});

@@ -136,6 +136,244 @@ function decodeRecord40(buf) {
 // yet — patching now means the class below uses our decoder.
 zktecoUtils.decodeRecordData40 = decodeRecord40;
 
+// ─── Granding legacy-protocol helper ─────────────────────────────────
+// Some Granding firmwares (e.g. FA210) accept the standard ZK session
+// commands (CMD_CONNECT/getInfo/enable) over TCP but REFUSE the standard
+// CMD_DATA_WRRQ downloads with "nothing to send". They do, however, serve
+// the full databases over the LEGACY read commands (CMD_ATTLOG_RQ #13 /
+// CMD_USERTEMP_RQ #9), streaming the payload as a RAW byte stream straight
+// after the CMD_PREPARE_DATA header. This helper speaks that dialect over a
+// dedicated connection.
+const net = require('net');
+const LEGACY_CMDS = {
+  CONNECT: 1000, EXIT: 1001, ENABLEDEVICE: 1002, DISABLEDEVICE: 1003,
+  ATTLOG_RRQ: 13, USERTEMP_RRQ: 9,
+  PREPARE_DATA: 1500, DATA: 1501, ACK_OK: 2000
+};
+const USHRT_MAX = 65535;
+
+function legacyChksum(buf) {
+  let sum = 0;
+  for (let i = 0; i < buf.length; i += 2) {
+    sum += (i === buf.length - 1) ? buf[i] : buf.readUInt16LE(i);
+    sum %= USHRT_MAX;
+  }
+  return USHRT_MAX - sum - 1;
+}
+
+function createLegacyFrame(cmd, session, replyId, data = Buffer.alloc(0)) {
+  // Outer 8B: [50 50 82 7d][u32 innerLen] + inner 8B: [cmd][chksum][session][replyId] + payload.
+  // replyId: checksum uses the passed value, the wire carries replyId + 1
+  // (same double-increment convention the library uses).
+  const buf = Buffer.alloc(16 + data.length);
+  data.copy(buf, 16);
+  buf.writeUInt16LE(cmd, 8);
+  buf.writeUInt16LE(session, 12);
+  buf.writeUInt16LE(replyId, 14);
+  buf.writeUInt16LE(legacyChksum(buf.subarray(8)), 10);
+  buf.write('5050827d', 0, 4, 'hex');
+  buf.writeUInt32LE(8 + data.length, 4);
+  buf.writeUInt16LE((replyId + 1) % USHRT_MAX, 14);
+  return buf;
+}
+
+/**
+ * One legacy-protocol download session against a Granding device.
+ * Runs over its own TCP connection so it never disturbs the main session.
+ */
+async function grandingLegacyDownload(ip, port, timeoutMs = 15000) {
+  const socket = net.createConnection(port, ip);
+  try {
+    await new Promise((res, rej) => {
+      socket.once('connect', res);
+      socket.once('error', rej);
+      setTimeout(() => rej(new Error('TCP connect timeout')), timeoutMs);
+    });
+
+    let session = 0, replyId = 0;
+    // 1. Session (device assigns the session id, replies ACK_UNAUTH 2005)
+    socket.write(createLegacyFrame(LEGACY_CMDS.CONNECT, 0, 0));
+    let frame = await readLegacyFrame(socket, timeoutMs);
+    if (frame.readUInt16LE(8) !== LEGACY_CMDS.ACK_OK && frame.readUInt16LE(8) !== 2005) {
+      throw new Error('Unexpected connect reply: ' + frame.readUInt16LE(8));
+    }
+    session = frame.readUInt16LE(12);
+
+    const sendCmd = (cmd, data = Buffer.alloc(0)) => {
+      replyId = (replyId + 1) % USHRT_MAX;
+      socket.write(createLegacyFrame(cmd, session, replyId, data));
+    };
+
+    // 2. Read the whole database over the legacy commands.
+    const drain = async (silenceMs = 600) => {
+      // Swallow any trailing bytes (e.g. the ACK_OK that closes the previous
+      // download) so the next command's reply isn't polluted by them.
+      let leftover = Buffer.from([]);
+      while (true) {
+        const d = await new Promise((resolve) => {
+          const t = setTimeout(() => resolve(null), silenceMs);
+          socket.once('data', function h(x) { clearTimeout(t); socket.removeListener('data', h); resolve(x); });
+        });
+        if (!d) break;
+        leftover = Buffer.concat([leftover, d]);
+      }
+      return leftover;
+    };
+    const fetch = async (cmd, label) => {
+      await drain(400);
+      sendCmd(cmd);
+      let buf = Buffer.from([]);
+      const collect = async (n, tmo) => {
+        while (buf.length < n) {
+          const d = await new Promise((resolve) => {
+            const t = setTimeout(() => resolve(null), tmo);
+            socket.once('data', function h(x) { clearTimeout(t); socket.removeListener('data', h); resolve(x); });
+          });
+          if (!d) return false;
+          buf = Buffer.concat([buf, d]);
+        }
+        return true;
+      };
+      if (!await collect(24, timeoutMs)) throw new Error(`${label}: no reply`);
+      if (buf.subarray(0, 4).toString('hex') !== '5050827d') throw new Error(`${label}: bad frame magic`);
+      const icmd = buf.readUInt16LE(8);
+      if (icmd === LEGACY_CMDS.ACK_OK) return Buffer.from([]); // genuinely empty
+      if (icmd !== LEGACY_CMDS.PREPARE_DATA) throw new Error(`${label}: unexpected cmd ${icmd}`);
+      const size = buf.length >= 20 ? buf.readUIntLE(16, 4) : 0;
+      if (size === 0) return Buffer.from([]);
+
+      // The payload follows as CMD_DATA-framed chunks: [16B frame header]
+      // [payload], where the header's u32@4 = 8 + payloadLen (64KB chunks).
+      // Collect frame by frame until `size` payload bytes are assembled.
+      buf = buf.subarray(24);
+      let content = Buffer.from([]);
+      while (content.length < size) {
+        if (!await collect(16, Math.max(timeoutMs, 30000))) {
+          throw new Error(`${label}: stream stalled at chunk header (${content.length}/${size})`);
+        }
+        if (buf.subarray(0, 4).toString('hex') !== '5050827d') {
+          throw new Error(`${label}: bad chunk magic at offset ${content.length}`);
+        }
+        const payloadLen = buf.readUInt32LE(4) - 8;
+        if (payloadLen <= 0 || payloadLen > 20 * 1024 * 1024) {
+          throw new Error(`${label}: implausible chunk length ${payloadLen}`);
+        }
+        if (!await collect(16 + payloadLen, Math.max(timeoutMs, 30000))) {
+          throw new Error(`${label}: stream stalled inside chunk (${content.length}/${size})`);
+        }
+        content = Buffer.concat([content, buf.subarray(16, 16 + payloadLen)]);
+        buf = buf.subarray(16 + payloadLen);
+      }
+      return content.subarray(0, size);
+    };
+
+      const attlog = await fetch(LEGACY_CMDS.ATTLOG_RRQ, 'ATTLOG');
+      if (process.env.DEBUG_GRANDING) {
+        console.log('[Granding] attlog first 48B:', attlog.subarray(0, 48).toString('hex'));
+      }
+      const users = await fetch(LEGACY_CMDS.USERTEMP_RRQ, 'USERS');
+
+    // 3. Re-enable and close politely.
+    try {
+      sendCmd(LEGACY_CMDS.ENABLEDEVICE);
+      await new Promise((resolve) => {
+        const t = setTimeout(resolve, 800);
+        socket.once('data', function h() { clearTimeout(t); socket.removeListener('data', h); resolve(); });
+      });
+    } catch (_) {}
+    try {
+      sendCmd(LEGACY_CMDS.EXIT);
+      await new Promise(r => setTimeout(r, 300));
+    } catch (_) {}
+
+    return { attlog, users };
+  } finally {
+    socket.destroy();
+  }
+}
+
+function readLegacyFrame(socket, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let acc = Buffer.from([]);
+    const onData = (d) => {
+      acc = Buffer.concat([acc, d]);
+      if (acc.length >= 16) {
+        socket.removeListener('data', onData);
+        clearTimeout(timer);
+        resolve(acc); // caller parses cmd at 8, session at 12
+      }
+    };
+    const timer = setTimeout(() => {
+      socket.removeListener('data', onData);
+      reject(new Error('legacy frame timeout'));
+    }, timeoutMs);
+    socket.on('data', onData);
+  });
+}
+
+/**
+ * Decode a 40-byte Granding attendance record (legacy #13 dump, 4-byte count prefix).
+ * Same 40-byte layout the app's decodeRecord40 already decodes, except the
+ * timestamp is the pyzk packed u32 at record offset 27 and the record stream
+ * has a 4-byte size prefix before the first record.
+ */
+function decodeGrandingRecords(attlogBuf) {
+  const records = [];
+  if (!attlogBuf || attlogBuf.length < 44) return records;
+  for (let base = 4; base + 40 <= attlogBuf.length; base += 40) {
+    const userId = attlogBuf.subarray(base + 2, base + 11).toString('ascii').split('\0')[0].trim();
+    const packed = attlogBuf.readUInt32LE(base + 27);
+    // packed === 0 is the firmware's "clock never set" filler — the same
+    // unparseable-time case the ZKTeco path drops (record_time '' → skipped).
+    if (packed === 0) continue;
+    const t = parseTimeToDate(packed);
+    if (!isValidDateTime(t)) continue;
+    records.push({
+      employeeId: userId,
+      logTime: `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')} ${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}:${String(t.second).padStart(2, '0')}`,
+      logType: '',
+      state: attlogBuf[base + 11]
+    });
+  }
+  return records;
+}
+
+/**
+ * Decode a 72-byte Granding user record (legacy #9 dump, 4-byte count prefix).
+ * Offsets: uid u16@0, name 24 chars @11, user id 9 chars @48 (canonical id).
+ */
+function decodeGrandingUsers(usersBuf) {
+  const users = [];
+  if (!usersBuf || usersBuf.length < 76) return users;
+  for (let base = 4; base + 72 <= usersBuf.length; base += 72) {
+    const uid = usersBuf.readUInt16LE(base);
+    const name = usersBuf.subarray(base + 11, base + 35).toString('ascii').split('\0')[0].replace(/[^\x20-\x7e]/g, '').trim();
+    const userId = usersBuf.subarray(base + 48, base + 57).toString('ascii').split('\0')[0].trim();
+    // Slot validation: this firmware's legacy user dump interleaves raw
+    // fingerprint-template pages with real user records; a template page
+    // decoded at 72 bytes produces random uid/name/id bytes. A slot is a
+    // real user only if it is well-formed:
+    //   - uid is a plausible record number (1..3000)
+    //   - the user id is numeric (this device assigns numeric ids) or empty
+    //   - the name is printable ASCII (plus Ñ/ñ) and, when non-empty, uses
+    //     only name-like characters and contains a letter or is the numeric
+    //     id stored as the name ("61" for unnamed user 61)
+    const idOk = /^\d{0,9}$/.test(userId);
+    const namePrintable = /^[\x20-\x7e\u00d1\u00f1]*$/.test(name);
+    const nameShaped = /^[A-Za-z0-9 .,'()\u00d1\u00f1\/-]*$/.test(name);
+    const nameOk = name === '' ? /^\d+$/.test(userId) : (nameShaped && (/[A-Za-z]/.test(name) || /^\d+$/.test(name)));
+    if (uid < 1 || uid > 3000 || !idOk || !namePrintable || !nameOk) {
+      if (process.env.DEBUG_GRANDING) {
+        console.log(`[Granding] dropped slot uid=${uid} id=${JSON.stringify(userId)} name=${JSON.stringify(name)}`);
+      }
+      continue; // template/foreign page — not a user
+    }
+    users.push({ uid, name, userId: userId || String(uid) });
+  }
+  return users;
+}
+
+
 // ─── ZTCP protocol patches ────────────────────────────────────────────────
 // The bundled zkteco-js has two bugs that make attendance syncing fail with
 // "TIMEOUT_IN_RECEIVING_RESPONSE_AFTER_REQUESTING_DATA":
@@ -356,6 +594,7 @@ class ZktecoService {
     this.device = null;
     this.connected = false;
     this.deviceInfo = null;
+    this.deviceType = 'zkteco'; // 'zkteco' | 'granding' (protocol selection)
   }
 
   /**
@@ -366,8 +605,9 @@ class ZktecoService {
    *   transfers get a floor of 10s so slow devices/large downloads don't stall)
    * @returns {{success: boolean, info?: object, message?: string}}
    */
-  async connect(ip, port = 4370, timeout = 5000) {
+  async connect(ip, port = 4370, timeout = 5000, deviceType = 'zkteco') {
     try {
+      this.deviceType = deviceType === 'granding' ? 'granding' : 'zkteco';
       // Disconnect any existing connection first
       if (this.device) {
         try { await this.device.disconnect(); } catch (_) {}
@@ -562,6 +802,12 @@ class ZktecoService {
       return { success: false, message: 'Not connected to any device.' };
     }
 
+    // Granding devices need the legacy read commands — the standard download
+    // is refused with "nothing to send" even though getInfo works.
+    if (this.deviceType === 'granding') {
+      return await this._grandingAttendance();
+    }
+
     try {
       const rawLogs = await this._withRetry('Get attendance', async () => {
         const response = await this._downloadWithDisable(() => this.device.getAttendances());
@@ -660,6 +906,10 @@ class ZktecoService {
       return { success: false, message: 'Not connected to any device.' };
     }
 
+    if (this.deviceType === 'granding') {
+      return await this._grandingUsers();
+    }
+
     try {
       const users = await this._withRetry('Get users', async () => {
         const response = await this._downloadWithDisable(() => this.device.getUsers());
@@ -749,6 +999,160 @@ class ZktecoService {
     } catch (err) {
       console.error('[ZktecoService] Clear attendance log error:', err);
       return { success: false, message: `Failed to clear logs: ${err.message}` };
+    }
+  }
+
+  /**
+   * Get the device's current clock time.
+   * @returns {{success: boolean, time?: Date, message?: string}}
+   */
+  async getDeviceTime() {
+    if (!this.isConnected()) {
+      return { success: false, message: 'Not connected to any device.' };
+    }
+
+    try {
+      const time = await this._withRetry('Get device time', async () => {
+        const t = await this.device.getTime();
+        // The library decodes the device clock into local wall-clock components
+        // (year/month/day/hour/...), so the returned Date is the device's
+        // displayed time, not a UTC instant.
+        return t;
+      });
+      console.log(`[ZktecoService] Device time: ${time}`);
+      return { success: true, time };
+    } catch (err) {
+      console.error('[ZktecoService] Get device time error:', err);
+      return { success: false, message: `Failed to get device time: ${err.message}` };
+    }
+  }
+
+  /**
+   * Set the device's clock. The Date's LOCAL wall-clock components
+   * (Y/M/D H:M:S) are what gets written to the device — the pyzk packed-time
+   * encoding is component-based, not a true UTC epoch.
+   * @param {Date} date - Desired device clock time
+   * @returns {{success: boolean, message?: string}}
+   */
+  async setDeviceTime(date) {
+    if (!this.isConnected()) {
+      return { success: false, message: 'Not connected to any device.' };
+    }
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+      return { success: false, message: 'Invalid date/time value.' };
+    }
+
+    try {
+      await this._withRetry('Set device time', async () => {
+        await this.device.setTime(date);
+      });
+      console.log(`[ZktecoService] Device time set to ${date}`);
+      return { success: true, message: 'Device time updated.' };
+    } catch (err) {
+      console.error('[ZktecoService] Set device time error:', err);
+      return { success: false, message: `Failed to set device time: ${err.message}` };
+    }
+  }
+
+  /**
+   * Check whether a biometric ID exists on the connected device.
+   *
+   * Used by the hidden manual-attendance feature to warn the admin when a
+   * punch is recorded for a teacher who is not enrolled on the biometric.
+   * Some firmware won't stream the user list over TCP — in that case the
+   * result is `unknown`, never a false "not enrolled".
+   *
+   * @param {number|string} biometricId - Teacher's biometric ID (device user ID).
+   * @returns {{success: boolean, onDevice?: boolean|null, deviceUsers?: number, message?: string}}
+   *   onDevice: true/false when the device answered with a user list,
+   *   null when enrollment status can't be determined.
+   */
+  async isUserOnDevice(biometricId) {
+    if (!this.isConnected()) {
+      return { success: false, onDevice: null, message: 'Not connected to any device.' };
+    }
+
+    try {
+      const res = await this._withRetry('Get users (enrollment check)', () => this.device.getUsers());
+      const users = (res && res.data) || [];
+      // Some firmware refuses to stream the user list over TCP (answers with
+      // an error-class reply) — that must read as "unknown", not as an empty
+      // device, or admins would get a false "not enrolled" warning.
+      const ztcp = this.device && (this.device.ztcp || this.device);
+      const lastReply = ztcp ? ztcp.lastReply : null;
+      if (users.length === 0 && lastReply != null &&
+          lastReply !== COMMANDS.CMD_ACK_OK && lastReply !== COMMANDS.CMD_PREPARE_DATA && lastReply !== COMMANDS.CMD_DATA) {
+        console.warn(`[ZktecoService] Enrollment check: device answered user list request with ${lastReply} (${exportErrorMessage(lastReply)}) — cannot determine enrollment.`);
+        return { success: true, onDevice: null, deviceUsers: 0 };
+      }
+      const idStr = String(biometricId);
+      const onDevice = users.some(u => String(u.userId) === idStr);
+      console.log(`[ZktecoService] Enrollment check: ID ${idStr} -> ${onDevice ? 'on device' : 'not on device'} (${users.length} device user(s) listed)`);
+      return {
+        success: true,
+        onDevice,
+        deviceUsers: users.length
+      };
+    } catch (err) {
+      console.error('[ZktecoService] Enrollment check error:', err);
+      return { success: false, onDevice: null, message: err.message };
+    }
+  }
+
+  /**
+   * Granding: fetch + parse attendance via the legacy read commands.
+   */
+  async _grandingAttendance() {
+    try {
+      const { attlog } = await grandingLegacyDownload(this.deviceInfo.ip, this.deviceInfo.port);
+      const records = decodeGrandingRecords(attlog);
+      console.log(`[ZktecoService] Granding legacy ATTLOG: ${records.length} usable record(s)`);
+
+      // Same alternating in/out classifier the ZKTeco path uses — this
+      // firmware records raw punches without in/out markers.
+      const byEmpDay = {};
+      for (const r of records) {
+        const key = `${r.employeeId}|${r.logTime.substring(0, 10)}`;
+        if (!byEmpDay[key]) byEmpDay[key] = [];
+        byEmpDay[key].push(r);
+      }
+      for (const key of Object.keys(byEmpDay)) {
+        const dayRecords = byEmpDay[key].sort((a, b) => a.logTime.localeCompare(b.logTime));
+        dayRecords.forEach((r, idx) => {
+          r.logType = idx % 2 === 0 ? 'Check-in' : 'Check-out';
+        });
+      }
+
+      return {
+        success: true,
+        data: records,
+        status: records.length > 0 ? 'ok' : 'empty',
+        message: `Retrieved ${records.length} record(s) from device.`
+      };
+    } catch (err) {
+      console.error('[ZktecoService] Granding ATTLOG error:', err);
+      return { success: false, message: `Failed to retrieve logs: ${err.message}` };
+    }
+  }
+
+  /**
+   * Granding: fetch + parse users via the legacy read commands.
+   */
+  async _grandingUsers() {
+    try {
+      const { users } = await grandingLegacyDownload(this.deviceInfo.ip, this.deviceInfo.port);
+      const list = decodeGrandingUsers(users);
+      console.log(`[ZktecoService] Granding legacy USERS: ${list.length} user(s)`);
+      return {
+        success: true,
+        data: list,
+        status: list.length > 0 ? 'ok' : 'empty',
+        userCount: list.length,
+        message: `Retrieved ${list.length} user(s).`
+      };
+    } catch (err) {
+      console.error('[ZktecoService] Granding USERS error:', err);
+      return { success: false, message: `Failed to retrieve users: ${err.message}` };
     }
   }
 

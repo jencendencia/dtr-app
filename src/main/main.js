@@ -846,11 +846,11 @@ ipcMain.handle('delete-device', async (event, deviceId) => {
   }
 });
 
-ipcMain.handle('connect-device', async (event, ip, port) => {
+ipcMain.handle('connect-device', async (event, ip, port, deviceType) => {
   try {
-    const result = await zktecoService.connect(ip, port);
+    const result = await zktecoService.connect(ip, port, 5000, deviceType || 'zkteco');
     if (result.success) {
-      logActivity(currentSessionUser, 'Connect Device', `Connected to device at ${ip}:${port}`);
+      logActivity(currentSessionUser, 'Connect Device', `Connected to ${deviceType || 'zkteco'} device at ${ip}:${port}`);
     }
     return result;
   } catch (err) {
@@ -878,12 +878,132 @@ ipcMain.handle('get-device-users', async () => {
   return zktecoService.getUsers();
 });
 
+// Hidden device-clock utility (Ctrl+Shift+I): verify the signed-in user's
+// password is an admin before letting them change the device clock.
+ipcMain.handle('verify-admin-password', async (event, password) => {
+  try {
+    if (!currentSessionUser) {
+      return { success: false, message: 'No user is signed in.' };
+    }
+    const user = db.prepare('SELECT id, username, password, role FROM Users WHERE username = ?').get(currentSessionUser);
+    if (!user) {
+      return { success: false, message: 'User not found.' };
+    }
+    const match = await bcrypt.compare(String(password || ''), user.password);
+    if (!match) {
+      return { success: false, message: 'Incorrect password.' };
+    }
+    if (user.role !== 'admin') {
+      return { success: false, message: 'This action requires an admin account.' };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Error verifying admin password:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('get-device-time', async () => {
+  try {
+    return await zktecoService.getDeviceTime();
+  } catch (err) {
+    console.error('Error getting device time:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('set-device-time', async (event, isoString) => {
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) {
+      return { success: false, message: 'Invalid date/time.' };
+    }
+    const result = await zktecoService.setDeviceTime(date);
+    if (result.success) {
+      logActivity(currentSessionUser, 'Set Device Time', `Set device clock to ${date.toLocaleString()} over LAN`);
+    }
+    return result;
+  } catch (err) {
+    console.error('Error setting device time:', err);
+    return { success: false, message: err.message };
+  }
+});
+
+// Hidden admin feature (Ctrl+Shift+I → Attendance tab): record a manual punch
+// (teacher ID + date + time + check-in/out). The ZKTeco TCP protocol has no
+// command that writes punch logs to the device (reads and clears only), so the
+// punch is stored in the app's attendance records — the same table device
+// syncs feed and the source DTR printing uses. When the device is reachable,
+// the teacher's enrollment on it is verified as a sanity check.
+ipcMain.handle('set-device-attendance', async (event, payload) => {
+  try {
+    const { biometricId, date, punchType } = payload || {};
+    const bioId = parseInt(biometricId, 10);
+    if (!bioId || bioId <= 0) {
+      return { success: false, message: 'A valid teacher biometric ID is required.' };
+    }
+    const punchDate = new Date(date);
+    if (isNaN(punchDate.getTime())) {
+      return { success: false, message: 'Invalid punch date/time.' };
+    }
+    const type = punchType === 'Check-out' ? 'Check-out' : 'Check-in';
+
+    // The teacher must exist in the database with this biometric ID — the
+    // audit trail should name the teacher, not a bare number.
+    const teacher = db.prepare('SELECT id, name, biometric_id FROM Teachers WHERE biometric_id = ?').get(bioId);
+    if (!teacher) {
+      return { success: false, message: `No teacher with biometric ID ${bioId} in the database.` };
+    }
+
+    const logTime = punchDate.getFullYear() + '-' +
+      String(punchDate.getMonth() + 1).padStart(2, '0') + '-' +
+      String(punchDate.getDate()).padStart(2, '0') + ' ' +
+      String(punchDate.getHours()).padStart(2, '0') + ':' +
+      String(punchDate.getMinutes()).padStart(2, '0') + ':' +
+      String(punchDate.getSeconds()).padStart(2, '0');
+
+    // Guard against double-inserting the exact same punch.
+    const existing = db.prepare('SELECT id FROM AttendanceLogs WHERE teacher_id = ? AND log_time = ?').get(teacher.id, logTime);
+    if (existing) {
+      return { success: false, message: `This punch already exists (${teacher.name}, ${type.toLowerCase()}, ${logTime}).` };
+    }
+
+    // Sanity check: is this teacher actually enrolled on the biometric?
+    // null = device unreachable or firmware won't list users (not an error).
+    let onDevice = null;
+    if (zktecoService.isConnected()) {
+      const check = await zktecoService.isUserOnDevice(bioId);
+      if (check.success) onDevice = check.onDevice;
+    }
+
+    const result = db.prepare(
+      'INSERT INTO AttendanceLogs (teacher_id, log_time, log_type) VALUES (?, ?, ?)'
+    ).run(teacher.id, logTime, type);
+
+    const enrollmentNote = onDevice === false ? ' [Note: this ID is NOT enrolled on the biometric device]' : '';
+    logActivity(currentSessionUser, 'Transfer Attendance to Device', `Recorded a ${type} punch for "${teacher.name}" (ID ${bioId}) at ${logTime}${enrollmentNote}`);
+
+    console.log(`[Attendance Transfer] Inserted log #${result.lastInsertRowid}: ${teacher.name}, ${type}, ${logTime}, onDevice=${onDevice}`);
+    return {
+      success: true,
+      message: `Attendance recorded: ${teacher.name}, ${type}, ${punchDate.toLocaleString()}.`,
+      enrolledOnDevice: onDevice
+    };
+  } catch (err) {
+    console.error('Error transferring attendance to device:', err);
+    return { success: false, message: err.message };
+  }
+});
+
 ipcMain.handle('sync-device-attendance', async (event, options = {}) => {
   try {
     // When enabled, records that can't be matched to an existing teacher are
     // skipped instead of auto-creating "Employee N" placeholder teachers
     // (e.g. orphaned logs left behind by users deleted from the device).
     const skipUnmatched = !!(options && options.skipUnmatched);
+    // Stamp last_sync only on the device actually synced (fall back to the
+    // type-wide update when the caller doesn't know which row it used).
+    const syncDeviceId = options && options.deviceId ? parseInt(options.deviceId, 10) : null;
 
     // First, fetch user names from the device
     const deviceUsersResult = await zktecoService.getUsers();
@@ -927,7 +1047,11 @@ ipcMain.handle('sync-device-attendance', async (event, options = {}) => {
         const summary = `No attendance records on device. Imported ${imported} ${plural} from the device as teachers.`;
         console.log('[Zkteco Sync]', summary);
         logActivity(currentSessionUser, 'Sync Device', summary);
-        db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type = 'zkteco'").run();
+        if (syncDeviceId) {
+          db.prepare('UPDATE BiometricDevices SET last_sync = datetime(\'now\', \'localtime\') WHERE id = ?').run(syncDeviceId);
+        } else {
+          db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type IN ('zkteco', 'granding')").run();
+        }
         return {
           success: true,
           message: summary,
@@ -1150,8 +1274,13 @@ ipcMain.handle('sync-device-attendance', async (event, options = {}) => {
 
     importTransaction();
 
-    // Update last_sync for all ZKTeco devices
-    db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type = 'zkteco'").run();
+    // Stamp last_sync on the device actually synced (fall back to the type-
+    // wide update when the caller doesn't know which row it used).
+    if (syncDeviceId) {
+      db.prepare('UPDATE BiometricDevices SET last_sync = datetime(\'now\', \'localtime\') WHERE id = ?').run(syncDeviceId);
+    } else {
+      db.prepare("UPDATE BiometricDevices SET last_sync = datetime('now', 'localtime') WHERE device_type IN ('zkteco', 'granding')").run();
+    }
 
     // If the device streamed its user list, also import any users that aren't
     // already in the local Teachers table (e.g. teachers on the device who have
@@ -1175,6 +1304,11 @@ ipcMain.handle('sync-device-attendance', async (event, options = {}) => {
     }
     if (userListStatus !== 'ok' && deviceUserCount > 0) {
       summary += ` Note: device has ${deviceUserCount} user(s) but didn't stream its user list — logs were matched using the IDs/names in the attendance records themselves.`;
+    } else if (userListStatus === 'ok' && deviceUserCount > 0 && deviceUsers.length === 0) {
+      // Roster reply was validated down to zero users (e.g. a firmware whose
+      // user table can't be decoded). The auto-created teachers then have no
+      // names to inherit — tell the user where to fix that.
+      summary += ` Note: the device reports ${deviceUserCount} user(s) but its user roster could not be read, so teachers were created with number-only names. Fix them in Teacher Enrollment.`;
     }
     console.log('[Zkteco Sync]', summary);
     logActivity(currentSessionUser, 'Sync Device', summary);
